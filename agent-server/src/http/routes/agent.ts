@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { VAULT_PATH } from "../../lib/config";
-import { logger } from "../../lib/logger";
-import { getSessionId, saveSessionId } from "../../lib/session-store";
-import { runAgent } from "../agent";
-import { isVaultReady } from "../vault";
+import { runAgent } from "../../agent";
+import { VAULT_PATH } from "../../../lib/config";
+import { logger } from "../../../lib/logger";
+import { getSessionId, saveSessionId } from "../../../lib/session-store";
+import { isVaultReady } from "../../vault";
 
 const requestBodySchema = z.object({
   message: z.string().min(1),

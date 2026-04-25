@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { GITHUB_WEBHOOK_SECRET } from "../../lib/config";
-import { isValidHubSignature256 } from "../../lib/github-webhook-signature";
-import { logger } from "../../lib/logger";
-import { pullVault } from "../vault";
+import { isValidHubSignature256 } from "../../../lib/github-webhook-signature";
+import { GITHUB_WEBHOOK_SECRET } from "../../../lib/config";
+import { logger } from "../../../lib/logger";
+import { pullVault } from "../../vault";
 
 const VAULT_SYNC_REFS: readonly string[] = [
   "refs/heads/main",

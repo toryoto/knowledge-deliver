@@ -1,8 +1,8 @@
 import { simpleGit } from "simple-git";
 import { existsSync } from "fs";
 import { join } from "path";
-import { GITHUB_TOKEN, VAULT_PATH, VAULT_REPO_URL } from "../lib/config";
-import { logger } from "../lib/logger";
+import { GITHUB_TOKEN, VAULT_PATH, VAULT_REPO_URL } from "../../lib/config";
+import { logger } from "../../lib/logger";
 
 let isSyncing = false;
 

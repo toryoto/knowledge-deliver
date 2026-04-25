@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { PORT } from "../lib/config";
 import { logger } from "../lib/logger";
-import { agentRoute } from "./routes/agent";
-import { healthRoute } from "./routes/health";
-import { webhookRoute } from "./routes/webhook";
+import { agentRoute } from "./http/routes/agent";
+import { healthRoute } from "./http/routes/health";
+import { webhookRoute } from "./http/routes/webhook";
 import { initVault } from "./vault";
 
 await initVault();
