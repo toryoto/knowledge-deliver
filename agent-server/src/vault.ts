@@ -1,30 +1,11 @@
 import { simpleGit } from "simple-git";
 import { existsSync } from "fs";
 import { join } from "path";
-import { logger } from "./logger";
-
-const VAULT_PATH = process.env.VAULT_PATH!;
-const VAULT_REPO_URL = process.env.VAULT_REPO_URL;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+import { GITHUB_TOKEN, VAULT_PATH, VAULT_REPO_URL } from "../lib/config";
+import { logger } from "../lib/logger";
 
 let isSyncing = false;
 
-/**
- * Fine-grained / Classic とも x-access-token 形式。
- */
-function authedUrl(url: string): string {
-  if (!GITHUB_TOKEN) return url;
-  try {
-    const u = new URL(url);
-    u.username = "x-access-token";
-    u.password = GITHUB_TOKEN;
-    return u.href;
-  } catch {
-    return url;
-  }
-}
-
-/** 初回 clone 済みか（.git があるか） */
 export function isVaultReady(): boolean {
   if (!VAULT_PATH) return false;
   return existsSync(join(VAULT_PATH, ".git"));
@@ -84,5 +65,20 @@ export async function commitAndPush(message: string): Promise<void> {
       await git.addRemote("origin", authedUrl(remoteUrl));
       await git.push("origin", "HEAD");
     }
+  }
+}
+
+/**
+ * Fine-grained / Classic とも x-access-token 形式。
+ */
+function authedUrl(url: string): string {
+  if (!GITHUB_TOKEN) return url;
+  try {
+    const u = new URL(url);
+    u.username = "x-access-token";
+    u.password = GITHUB_TOKEN;
+    return u.href;
+  } catch {
+    return url;
   }
 }

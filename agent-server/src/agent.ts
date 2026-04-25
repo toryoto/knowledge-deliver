@@ -1,16 +1,18 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { VAULT_PATH } from "../lib/config";
+import { logger } from "../lib/logger";
+import { SYSTEM_PROMPT_APPEND } from "../lib/prompt";
 import { commitAndPush } from "./vault";
-import { logger } from "./logger";
 
-const VAULT_PATH = process.env.VAULT_PATH!;
-
-const ALLOWED_TOOLS = ["Read", "Edit", "Write", "Grep", "Glob", "LS", "Skill"];
-
-const VAULT_SYSTEM_APPEND = `
-- 検索の対象は Obsidian Vault 内の Markdown（.md）ノートである。汎用ソースコード用リポジトリと決めつけない。
-- 単純 Grep だけに頼らない。必要なら関連ノートを Read で全文読む。
-- Claude Code セッション用の内部 Todo ツール候補と、Vault ノート上の人間向け TODO を混同しない。ユーザーが求めているのは通常後者である。
-- CLAUDE.md や Vault 内の Skills にディレクトリ固有のルールがあれば最優先に従う。`;
+const ALLOWED_TOOLS: string[] = [
+  "Read",
+  "Edit",
+  "Write",
+  "Grep",
+  "Glob",
+  "LS",
+  "Skill",
+];
 
 export async function runAgent(params: {
   message: string;
@@ -28,7 +30,7 @@ export async function runAgent(params: {
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      append: VAULT_SYSTEM_APPEND,
+      append: SYSTEM_PROMPT_APPEND,
     },
     allowedTools: ALLOWED_TOOLS,
     permissionMode: "acceptEdits",

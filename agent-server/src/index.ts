@@ -1,9 +1,10 @@
 import { Hono } from "hono";
+import { PORT } from "../lib/config";
+import { logger } from "../lib/logger";
 import { agentRoute } from "./routes/agent";
-import { webhookRoute } from "./routes/webhook";
 import { healthRoute } from "./routes/health";
+import { webhookRoute } from "./routes/webhook";
 import { initVault } from "./vault";
-import { logger } from "./logger";
 
 await initVault();
 
@@ -40,10 +41,9 @@ app.onError((err, c) => {
   return c.json({ error: "Internal server error" }, 500);
 });
 
-const port = Number(process.env.PORT ?? 3000);
-logger.info("server: listening", { port });
+logger.info("server: listening", { port: PORT });
 
 export default {
-  port,
+  port: PORT,
   fetch: app.fetch,
 };

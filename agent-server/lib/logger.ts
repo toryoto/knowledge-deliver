@@ -1,14 +1,5 @@
 type Level = "debug" | "info" | "warn" | "error";
 
-/** git / GitHub 認証情報が混ざった文字列用（ログ汚染防止） */
-function redactCredentials(text: string): string {
-  if (!text) return text;
-  return text
-    .replace(/x-access-token:[^@]+@/gi, "x-access-token:***@")
-    .replace(/https:\/\/github_pat_[^@\s"']+@/gi, "https://github_pat_***@")
-    .replace(/https:\/\/ghp_[a-zA-Z0-9]+@/g, "https://ghp_***@");
-}
-
 const ORDER: Record<Level, number> = {
   debug: 0,
   info: 1,
@@ -22,44 +13,11 @@ const ORDER: Record<Level, number> = {
 export class Logger {
   private static singleton: Logger | undefined;
 
-  private constructor(
-    private readonly min: Level = Logger.parseMinLevel()
-  ) {}
-
-  private static parseMinLevel(): Level {
-    const raw = process.env.LOG_LEVEL;
-    if (raw === "debug" || raw === "info" || raw === "warn" || raw === "error")
-      return raw;
-    return "info";
-  }
-
   static getInstance(): Logger {
     if (!Logger.singleton) {
       Logger.singleton = new Logger();
     }
     return Logger.singleton;
-  }
-
-  private enabled(level: Level): boolean {
-    return ORDER[level] >= ORDER[this.min];
-  }
-
-  private line(
-    level: Level,
-    msg: string,
-    meta?: Record<string, string | number | boolean | undefined>
-  ): void {
-    if (!this.enabled(level)) return;
-    const ts = new Date().toISOString();
-    const base = `[${ts}] [${level.toUpperCase()}] ${msg}`;
-    if (meta && Object.keys(meta).length > 0) {
-      const flat = Object.entries(meta)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(" ");
-      console.log(`${base} | ${flat}`);
-    } else {
-      console.log(base);
-    }
   }
 
   debug(msg: string, meta?: Record<string, string | number | boolean | undefined>): void {
@@ -106,6 +64,46 @@ export class Logger {
       console.error(`${base}${rest}`);
     }
   }
+
+  private constructor(private readonly min: Level = Logger.parseMinLevel()) {}
+
+  private static parseMinLevel(): Level {
+    const raw = process.env.LOG_LEVEL;
+    if (raw === "debug" || raw === "info" || raw === "warn" || raw === "error")
+      return raw;
+    return "info";
+  }
+
+  private enabled(level: Level): boolean {
+    return ORDER[level] >= ORDER[this.min];
+  }
+
+  private line(
+    level: Level,
+    msg: string,
+    meta?: Record<string, string | number | boolean | undefined>
+  ): void {
+    if (!this.enabled(level)) return;
+    const ts = new Date().toISOString();
+    const base = `[${ts}] [${level.toUpperCase()}] ${msg}`;
+    if (meta && Object.keys(meta).length > 0) {
+      const flat = Object.entries(meta)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" ");
+      console.log(`${base} | ${flat}`);
+    } else {
+      console.log(base);
+    }
+  }
 }
 
 export const logger = Logger.getInstance();
+
+/** git / GitHub 認証情報が混ざった文字列用（ログ汚染防止） */
+function redactCredentials(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/x-access-token:[^@]+@/gi, "x-access-token:***@")
+    .replace(/https:\/\/github_pat_[^@\s"']+@/gi, "https://github_pat_***@")
+    .replace(/https:\/\/ghp_[a-zA-Z0-9]+@/g, "https://ghp_***@");
+}

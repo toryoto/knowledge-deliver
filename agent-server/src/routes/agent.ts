@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { VAULT_PATH } from "../../lib/config";
+import { logger } from "../../lib/logger";
+import { getSessionId, saveSessionId } from "../../lib/session-store";
 import { runAgent } from "../agent";
-import { getSessionId, saveSessionId } from "../session-store";
-import { logger } from "../logger";
 import { isVaultReady } from "../vault";
 
-const RequestSchema = z.object({
+const requestBodySchema = z.object({
   message: z.string().min(1),
   source: z.string().min(1),
   sessionKey: z.string().min(1),
@@ -15,16 +16,15 @@ export const agentRoute = new Hono();
 
 agentRoute.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
-  const parsed = RequestSchema.safeParse(body);
+  const parsed = requestBodySchema.safeParse(body);
   if (!parsed.success) {
     logger.warn("agent: bad request", { issueCount: parsed.error.issues.length });
     return c.json({ error: "Invalid request", details: parsed.error.issues }, 400);
   }
 
   const { message, source, sessionKey } = parsed.data;
-  const vaultPath = process.env.VAULT_PATH;
 
-  if (!vaultPath) {
+  if (!VAULT_PATH) {
     logger.error("agent: VAULT_PATH missing", undefined, { source, sessionKey });
     return c.json({ error: "VAULT_PATH not configured" }, 500);
   }
@@ -56,7 +56,7 @@ agentRoute.post("/", async (c) => {
     const { result, sessionId } = await runAgent({
       message,
       sessionId: existingSessionId ?? undefined,
-      vaultPath,
+      vaultPath: VAULT_PATH,
     });
 
     await saveSessionId(source, sessionKey, sessionId).catch((err) => {

@@ -1,9 +1,8 @@
 import Redis from "ioredis";
+import { REDIS_URL, SESSION_TTL_SECONDS } from "./config";
 import { logger } from "./logger";
 
-const TTL_SECONDS = 7 * 24 * 60 * 60;
-
-const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
+const redis = new Redis(REDIS_URL, {
   lazyConnect: true,
   enableOfflineQueue: false,
 });
@@ -28,5 +27,5 @@ export async function saveSessionId(
   sessionKey: string,
   sessionId: string
 ): Promise<void> {
-  await redis.setex(`session:${source}:${sessionKey}`, TTL_SECONDS, sessionId);
+  await redis.setex(`session:${source}:${sessionKey}`, SESSION_TTL_SECONDS, sessionId);
 }

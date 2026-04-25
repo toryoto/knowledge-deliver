@@ -1,13 +1,18 @@
 import { Hono } from "hono";
-import { createHmac, timingSafeEqual } from "crypto";
+import { GITHUB_WEBHOOK_SECRET } from "../../lib/config";
+import { isValidHubSignature256 } from "../../lib/github-webhook-signature";
+import { logger } from "../../lib/logger";
 import { pullVault } from "../vault";
-import { logger } from "../logger";
+
+const VAULT_SYNC_REFS: readonly string[] = [
+  "refs/heads/main",
+  "refs/heads/master",
+];
 
 export const webhookRoute = new Hono();
 
 webhookRoute.post("/", async (c) => {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
-  if (!secret) {
+  if (!GITHUB_WEBHOOK_SECRET) {
     logger.error("webhook: GITHUB_WEBHOOK_SECRET not set");
     return c.json({ error: "Webhook secret not configured" }, 500);
   }
@@ -20,21 +25,14 @@ webhookRoute.post("/", async (c) => {
     return c.json({ error: "Missing signature" }, 401);
   }
 
-  const expected = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`;
-  const expectedBuf = Buffer.from(expected);
-  const actualBuf = Buffer.from(signature);
-
-  if (
-    expectedBuf.length !== actualBuf.length ||
-    !timingSafeEqual(expectedBuf, actualBuf)
-  ) {
+  if (!isValidHubSignature256(GITHUB_WEBHOOK_SECRET, rawBody, signature)) {
     logger.warn("webhook: bad signature");
     return c.json({ error: "Invalid signature" }, 401);
   }
 
   const payload = JSON.parse(rawBody) as { ref?: string };
-  if (payload.ref === "refs/heads/main" || payload.ref === "refs/heads/master") {
-    logger.info("webhook: main push, scheduling pull", { ref: String(payload.ref) });
+  if (payload.ref && VAULT_SYNC_REFS.includes(payload.ref)) {
+    logger.info("webhook: main push, scheduling pull", { ref: payload.ref });
     setImmediate(() => {
       pullVault().catch((err) => logger.error("vault: pull failed (webhook)", err));
     });
