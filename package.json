@@ -1,0 +1,10 @@
+{
+  "name": "obsidian-agent",
+  "private": true,
+  "workspaces": ["agent-server"],
+  "scripts": {
+    "dev": "bun --filter agent-server dev",
+    "docker:up": "docker compose up",
+    "docker:redis": "docker compose up redis -d"
+  }
+}
