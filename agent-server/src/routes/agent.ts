@@ -3,6 +3,7 @@ import { z } from "zod";
 import { runAgent } from "../agent";
 import { getSessionId, saveSessionId } from "../session-store";
 import { logger } from "../logger";
+import { isVaultReady } from "../vault";
 
 const RequestSchema = z.object({
   message: z.string().min(1),
@@ -26,6 +27,17 @@ agentRoute.post("/", async (c) => {
   if (!vaultPath) {
     logger.error("agent: VAULT_PATH missing", undefined, { source, sessionKey });
     return c.json({ error: "VAULT_PATH not configured" }, 500);
+  }
+
+  if (!isVaultReady()) {
+    logger.warn("agent: vault not ready", { source, sessionKey });
+    return c.json(
+      {
+        error:
+          "Vault is not initialized (git clone failed or still starting). Check GITHUB_TOKEN: repository must be selected on the token, Contents read (or read/write), and SSO authorized if the org requires it.",
+      },
+      503
+    );
   }
 
   const existingSessionId = await getSessionId(source, sessionKey).catch((err) => {

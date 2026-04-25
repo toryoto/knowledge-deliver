@@ -9,24 +9,47 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 let isSyncing = false;
 
+/**
+ * Fine-grained / Classic とも x-access-token 形式。
+ */
 function authedUrl(url: string): string {
-  if (!GITHUB_TOKEN || url.includes("@")) return url;
-  const token = encodeURIComponent(GITHUB_TOKEN);
-  return url.replace("https://", `https://x-access-token:${token}@`);
+  if (!GITHUB_TOKEN) return url;
+  try {
+    const u = new URL(url);
+    u.username = "x-access-token";
+    u.password = GITHUB_TOKEN;
+    return u.href;
+  } catch {
+    return url;
+  }
+}
+
+/** 初回 clone 済みか（.git があるか） */
+export function isVaultReady(): boolean {
+  if (!VAULT_PATH) return false;
+  return existsSync(join(VAULT_PATH, ".git"));
 }
 
 export async function initVault(): Promise<void> {
   if (!VAULT_PATH) return;
 
-  const isGitRepo = existsSync(join(VAULT_PATH, ".git"));
-  if (isGitRepo) return;
+  if (isVaultReady()) return;
 
   if (!VAULT_REPO_URL) return;
 
+  const cloneFrom = authedUrl(VAULT_REPO_URL);
   logger.info("vault: clone start", { from: "remote", to: VAULT_PATH });
   const git = simpleGit();
-  await git.clone(authedUrl(VAULT_REPO_URL), VAULT_PATH);
-  logger.info("vault: clone done", { to: VAULT_PATH });
+  try {
+    await git.clone(cloneFrom, VAULT_PATH);
+    logger.info("vault: clone done", { to: VAULT_PATH });
+  } catch (e) {
+    logger.error(
+      "vault: clone failed (403 のときはトークンがリポに紐づいていない・Contents 権限・SSO 承認を確認。ログにURLを出さない)",
+      e
+    );
+    throw e;
+  }
 }
 
 export async function pullVault(): Promise<void> {
