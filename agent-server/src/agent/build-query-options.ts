@@ -1,3 +1,4 @@
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { SYSTEM_PROMPT_APPEND } from "../../lib/prompt";
 import { createAutoCommitOnStopHook, createWriteToolPathGuard } from "./hooks";
 
@@ -17,10 +18,10 @@ const AGENT_ALLOWED_TOOLS: string[] = [
 export function buildAgentQueryOptions(params: {
   vaultPath: string;
   sessionId: string | undefined;
-}): Record<string, unknown> {
+}): Options {
   const { vaultPath, sessionId } = params;
 
-  const options: Record<string, unknown> = {
+  const options: Options = {
     cwd: vaultPath,
     settingSources: ["project"],
     systemPrompt: {

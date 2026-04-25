@@ -14,7 +14,7 @@ export async function runAgent(params: {
   const runStarted = performance.now();
   logger.info("claude: query start", { resume: sessionId ? 1 : 0 });
 
-  const stream = query({ prompt: message, options: options as never });
+  const stream = query({ prompt: message, options });
   const { sessionId: nextSessionId, result } = await consumeClaudeAgentStream(stream);
 
   const ms = Math.round(performance.now() - runStarted);
