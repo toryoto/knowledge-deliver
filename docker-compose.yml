@@ -20,5 +20,12 @@ services:
       timeout: 3s
       retries: 5
 
+  slack-bot:
+    build: ./slack-bot
+    env_file: ./slack-bot/.env
+    depends_on:
+      agent-server:
+        condition: service_started
+
 volumes:
   vault-data:

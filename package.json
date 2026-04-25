@@ -1,9 +1,10 @@
 {
   "name": "obsidian-agent",
   "private": true,
-  "workspaces": ["agent-server"],
+  "workspaces": ["agent-server", "slack-bot"],
   "scripts": {
     "dev": "bun --filter agent-server dev",
+    "dev:slack": "bun --filter slack-bot dev",
     "docker:up": "docker compose up",
     "docker:redis": "docker compose up redis -d"
   }
