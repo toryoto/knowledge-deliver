@@ -11,7 +11,8 @@ let isSyncing = false;
 
 function authedUrl(url: string): string {
   if (!GITHUB_TOKEN || url.includes("@")) return url;
-  return url.replace("https://", `https://${GITHUB_TOKEN}@`);
+  const token = encodeURIComponent(GITHUB_TOKEN);
+  return url.replace("https://", `https://x-access-token:${token}@`);
 }
 
 export async function initVault(): Promise<void> {
