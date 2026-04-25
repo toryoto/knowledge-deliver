@@ -1,4 +1,5 @@
 import Redis from "ioredis";
+import { logger } from "./logger";
 
 const TTL_SECONDS = 7 * 24 * 60 * 60;
 
@@ -8,7 +9,11 @@ const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
 });
 
 redis.on("error", (err) => {
-  console.error("Redis error:", err.message);
+  logger.error("redis: client error", err, { message: err.message });
+});
+
+redis.on("connect", () => {
+  logger.info("redis: connected");
 });
 
 export async function getSessionId(

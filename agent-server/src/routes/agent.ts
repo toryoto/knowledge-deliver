@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { runAgent } from "../agent";
 import { getSessionId, saveSessionId } from "../session-store";
+import { logger } from "../logger";
 
 const RequestSchema = z.object({
   message: z.string().min(1),
@@ -15,6 +16,7 @@ agentRoute.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) {
+    logger.warn("agent: bad request", { issueCount: parsed.error.issues.length });
     return c.json({ error: "Invalid request", details: parsed.error.issues }, 400);
   }
 
@@ -22,20 +24,37 @@ agentRoute.post("/", async (c) => {
   const vaultPath = process.env.VAULT_PATH;
 
   if (!vaultPath) {
+    logger.error("agent: VAULT_PATH missing", undefined, { source, sessionKey });
     return c.json({ error: "VAULT_PATH not configured" }, 500);
   }
 
-  const existingSessionId = await getSessionId(source, sessionKey).catch(() => null);
-
-  const { result, sessionId } = await runAgent({
-    message,
-    sessionId: existingSessionId ?? undefined,
-    vaultPath,
+  const existingSessionId = await getSessionId(source, sessionKey).catch((err) => {
+    logger.error("agent: getSessionId failed", err, { source, sessionKey });
+    return null;
   });
 
-  await saveSessionId(source, sessionKey, sessionId).catch((err) => {
-    console.error("Failed to save session:", err);
+  logger.info("agent: start", {
+    source,
+    sessionKey,
+    messageChars: message.length,
+    resume: existingSessionId ? 1 : 0,
   });
 
-  return c.json({ text: result });
+  try {
+    const { result, sessionId } = await runAgent({
+      message,
+      sessionId: existingSessionId ?? undefined,
+      vaultPath,
+    });
+
+    await saveSessionId(source, sessionKey, sessionId).catch((err) => {
+      logger.error("agent: saveSessionId failed", err, { source, sessionKey });
+    });
+
+    logger.info("agent: ok", { source, sessionKey, resultChars: result.length });
+    return c.json({ text: result });
+  } catch (err) {
+    logger.error("agent: run failed", err, { source, sessionKey });
+    throw err;
+  }
 });
