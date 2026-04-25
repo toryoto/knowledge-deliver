@@ -1,5 +1,14 @@
 type Level = "debug" | "info" | "warn" | "error";
 
+/** git / GitHub 認証情報が混ざった文字列用（ログ汚染防止） */
+function redactCredentials(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/x-access-token:[^@]+@/gi, "x-access-token:***@")
+    .replace(/https:\/\/github_pat_[^@\s"']+@/gi, "https://github_pat_***@")
+    .replace(/https:\/\/ghp_[a-zA-Z0-9]+@/g, "https://ghp_***@");
+}
+
 const ORDER: Record<Level, number> = {
   debug: 0,
   info: 1,
@@ -72,15 +81,27 @@ export class Logger {
   ): void {
     if (!this.enabled("error")) return;
     const ts = new Date().toISOString();
-    const base = `[${ts}] [ERROR] ${msg}`;
+    const base = `[${ts}] [ERROR] ${redactCredentials(msg)}`;
     const rest =
       meta && Object.keys(meta).length > 0
-        ? " | " + Object.entries(meta)
-            .map(([k, v]) => `${k}=${v}`)
+        ? " | " +
+          Object.entries(meta)
+            .map(([k, v]) => {
+              if (v === undefined) return `${k}=`;
+              if (typeof v === "string") return `${k}=${redactCredentials(v)}`;
+              return `${k}=${v}`;
+            })
             .join(" ")
         : "";
     if (err !== undefined) {
-      console.error(`${base}${rest}`, err);
+      if (err instanceof Error) {
+        const safe =
+          redactCredentials(err.message) +
+          (err.stack ? `\n${redactCredentials(err.stack)}` : "");
+        console.error(`${base}${rest}`, safe);
+      } else {
+        console.error(`${base}${rest}`, redactCredentials(String(err)));
+      }
     } else {
       console.error(`${base}${rest}`);
     }

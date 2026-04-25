@@ -44,10 +44,7 @@ export async function initVault(): Promise<void> {
     await git.clone(cloneFrom, VAULT_PATH);
     logger.info("vault: clone done", { to: VAULT_PATH });
   } catch (e) {
-    logger.error(
-      "vault: clone failed (403 のときはトークンがリポに紐づいていない・Contents 権限・SSO 承認を確認。ログにURLを出さない)",
-      e
-    );
+    logger.error("vault: clone failed (403: token/repo/SSO 等を確認)", e);
     throw e;
   }
 }
