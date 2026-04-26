@@ -27,5 +27,16 @@ services:
       agent-server:
         condition: service_started
 
+  pipeline:
+    build: ./pipeline
+    environment:
+      - AGENT_ENDPOINT_URL=http://agent-server:3000
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ./pipeline/.env
+    depends_on:
+      - agent-server
+      - redis
+
 volumes:
   vault-data:

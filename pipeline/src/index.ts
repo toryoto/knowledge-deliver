@@ -1,0 +1,13 @@
+import { runCollectXLikesJob } from "./jobs/collect-x-likes";
+import { closeRedis } from "./lib/like-cursor-store";
+
+try {
+  await runCollectXLikesJob();
+} catch (err) {
+  console.error("[pipeline] job failed:", err);
+  await closeRedis();
+  process.exit(1);
+}
+
+await closeRedis();
+process.exit(0);
