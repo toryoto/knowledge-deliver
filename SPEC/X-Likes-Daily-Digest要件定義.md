@@ -44,7 +44,7 @@ Railway Cron (毎日 9:00 JST)
        ├─ Anthropic API (claude-haiku-4-5): 構造化要約生成
        ├─ Slack: #ai-x-like-notification にヘッダーメッセージ投稿
        ├─ Slack: 各ツイートをヘッダーへのスレッド返信で投稿
-       ├─ ジョブ成功後、カーソルを今回の先頭（最新側）の水準に更新
+       ├─ ジョブ成功後、カーソル更新（下記「カーソル更新ルール」）
        └─ process.exit(0) でコンテナ終了
 
 User が Slack で :bookmark: リアクション
@@ -64,7 +64,25 @@ User が Slack で :bookmark: リアクション
 - `liked_tweets` は**いいねした順（新しいいいねが先）**に近い順序で返る想定でページネーションする。
 - **カーソル** `last_processed_tweet_id`: 前回ジョブ完了時点で「既にダイジェストに載せた**いいねストリーム上の最新ツイート**」のID。初回は未設定。
 - **次回ジョブ**: 先頭ページから順にツイートを見ていき、`tweet.id === last_processed_tweet_id` に**到達したら走査終了**（そのID自体は再処理しない）。到達前に取れたツイートだけが今回の対象。
-- **初回（カーソルなし）**: ポリシーを決める必要がある。例: 最大ページ数・最大件数で打ち切り、その範囲を処理し、処理した先頭のIDをカーソルにする。または「直近N件のみ」など運用で固定。
+- **初回（カーソルなし）**: 先頭10件のみ取得して処理し、その先頭のIDをカーソルにする。
+
+### カーソル更新ルール（実装契約）
+
+`liked_tweets` は**新しいいいねが先頭**に来るため、収集結果の配列 `newTweets` も同じ順（インデックス 0 = いいねストリーム上もっとも新しい1件）とみなす。
+
+**「先頭」の意味**: 今回ジョブで「新規として処理対象になったツイート」のうち、**API 上いちばん新しいいいねに対応するツイートID**＝ `newTweets[0].id`（`newTweets.length > 0` のとき）。
+
+**更新してよいタイミング**: Slack へのダイジェスト投稿まで**すべて成功**したあと（失敗時はカーソルを進めない）。
+
+**新規いいねが 0 件のとき**: **カーソルを更新しない**（`store.set` を呼ばない）。前回までの `last_processed_tweet_id` をそのまま残す。こうしないと「更新値が決まらず毎回 `null` に戻す」などの曖昧実装になり、増分境界が壊れる。
+
+```typescript
+// ジョブ全体が成功した直後のイメージ
+if (newTweets.length > 0) {
+  await store.set(newTweets[0].id); // いいねストリームの最新側（今回処理した新規の先頭）
+}
+// newTweets.length === 0 のときは set しない → 正しい
+```
 
 ### Slackメッセージ構造（Block Kit）
 
@@ -128,8 +146,8 @@ pipeline/
 
 - **責務**: `last_processed_tweet_id`（文字列）の get / set。
 - **バックエンド**: 既存インフラの **Redis**（Railway）を利用。キー例: `x-likes-digest:last-tweet-id`。
-- **更新タイミング**: ジョブがSlack投稿まで**成功**した後に、今回の走査で「APIレスポンス先頭（最新いいね側）」に相当する水準へ更新する。新規0件の場合はカーソル更新の要否をポリシーで決める（例: 先頭ツイートIDが取れるなら同期のみ、など）。
-- **整合性**: 投稿失敗時はカーソルを進めない（再実行で重複投稿しうるため、Slack側で冪等にするか、カーソル更新を「投稿成功後」のみに限定）。
+- **更新タイミング**: §2「カーソル更新ルール」に従う。要約: **新規いいねが1件以上あるジョブが完全成功したときだけ** `newTweets[0].id` を保存する。**新規0件のときは `set` しない**。
+- **整合性**: 投稿失敗時はカーソルを進めない（再実行で重複投稿しうるため、カーソル更新は「投稿成功後」のみ）。
 
 #### x-client.ts
 
@@ -146,7 +164,7 @@ pipeline/
   2. 各ページのツイートを**APIの並び順のまま**走査
   3. `cursor` がある場合、各ツイートについて `id === cursor` なら**そこで走査終了**（当該ツイートは結果に含めない）
   4. それ以外は「新規」として配列に追加
-  5. 初回モードでは「最大件数・最大ページ」で打ち切った範囲を新規とみなす（仕様化しておく）
+  5. 初回モードでは max_results=10 で1ページのみ取得し、その10件を新規とみなす
 - フィルタ: **`created_at` による24時間制限は増分の主判定には使わない**（参考情報・ログ用に残してよい）
 - 戻り値の型:
 
@@ -203,7 +221,7 @@ pipeline/
 
 #### slack-message.ts（Block Kit固定構造）
 
-`reaction.ts` がこの構造をパースするため、変更する場合は両方同時に更新すること。
+`parseTweetFromBlocks`（slack-bot）がこの並び・フィールドを前提にするため、**変更する場合は pipeline の本ファイルと slack-bot のパーサを同時に更新**すること。
 
 ```
 Block 0: [Section] *{authorName}* (@{authorUsername})
@@ -213,7 +231,39 @@ Block 3: [Context] <{xUrl}|View on X>  ← ここに x-post-v1 マーカーを�
 Block 4: [Divider]
 ```
 
-Context block のテキストに `<!-- x-post-v1 -->` 相当の識別子を埋め込み、reaction handler がパイプライン生成メッセージかどうかを検証できるようにする。
+- Section の本文は Block Kit 上 `text: { type: "mrkdwn", text: "..." }` 形式とする。
+- Context（Block 3）は `elements: [{ type: "mrkdwn", text: "..." }]` とし、**マーカーと X のリンクを同じ要素の `text` に含めてよい**（例: `"<https://x.com/.../status/...|View on X> x-post-v1"`）。マーカーは HTML コメント風でもプレーンテキストでもよいが、パーサは **`x-post-v1` という連続文字列の有無**で判定する。
+
+---
+
+#### parseTweetFromBlocks（slack-bot）— 抽出ルール
+
+`conversations.replies` 等で得た `blocks` 配列から、1件分のダイジェスト投稿を `tweetData` に変換する。**前提**: 上記の固定インデックス（0〜4）。型は Slack の `KnownBlock[]` 等としてよい。
+
+**対応表（どの Block から何を取るか）**
+
+| 論理名 | Block index | Slack 上の場所 | 取り方 |
+|--------|-------------|----------------|--------|
+| マーカー（パイプライン生成の識別） | 3 | `blocks[3].elements[0]` | `elements[0].text` に **`x-post-v1`** が**部分文字列として**含まれること。含まなければ `null` を返しスキップ。 |
+| `xUrl`（X ステータス URL） | 3 | 同上 | **`elements[0].url` が存在すればその値**。Slack の標準 `mrkdwn` 要素には `url` が無いことが多いので、その場合は **`elements[0].text` 内の Slack リンク記法**（`<` + `https://…` + `|` + ラベル + `>`）から `https://` で始まる URL を正規表現等で抽出する（`slack-message.ts` が出す URL と一致させる）。 |
+| `authorUsername` | 0 | `blocks[0].text.text` | **mrkdwn 全文**から `@username` 形式を抽出（例: `\(@([a-zA-Z0-9_]+)\)` で括弧直前のユーザー名。実装では `*表示名* (@handle)` に合わせてよい）。 |
+| `tweetText` | 1 | `blocks[1].text.text` | そのまま（プレーンテキスト扱い）。 |
+| `summary` | 2 | `blocks[2]` が存在し `type === "section"` なら `blocks[2].text.text` | **リンク付きツイートで要約 Section を出したときだけ Block 2 がある**想定。無い場合は `summary` は `undefined` または空文字。 |
+
+**戻り値の例（概念）**
+
+```typescript
+type ParsedTweetForVault = {
+  authorUsername: string;
+  tweetText: string;
+  summary?: string;
+  xUrl: string;
+};
+```
+
+**失敗時**: マーカー不一致・必須 Block 欠落・`xUrl` が取れない場合は `null`（`reaction_added` では何もしない）。
+
+**配置**: `slack-bot/src/handlers/reaction.ts` から呼ぶ、または `slack-bot/src/lib/parse-tweet-blocks.ts` に切り出してよい。
 
 #### collect-x-likes.ts（ジョブ制御）
 
@@ -456,6 +506,7 @@ pipeline:
 | `pipeline/src/lib/agent-client.ts` | slack-bot のものをコピー (source: "pipeline") |
 | `pipeline/src/formatters/slack-message.ts` | |
 | `slack-bot/src/handlers/reaction.ts` | |
+| `slack-bot/src/lib/parse-tweet-blocks.ts` | 任意。`parseTweetFromBlocks` を切り出す場合 |
 | `{vault-repo}/.claude/skills/import-x-post/SKILL.md` | Vault リポジトリ側で作成 |
 
 ### 既存ファイル変更
@@ -474,9 +525,9 @@ pipeline:
 ## 9. 検証方法
 
 1. **X API + カーソル動作確認**
-   - `REDIS_URL` をセットし、カーソル未設定状態で1回実行 → 期待件数が収集されること
-   - 同じ状態で再実行 → 新規いいねがなければ0件（またはカーソル直後のみ）であること
-   - いいねを1件追加して再実行 → 当該1件だけ増えること
+   - `REDIS_URL` をセットし、カーソル未設定状態で1回実行 → 10件が収集され、Redis に newTweets[0].id が保存されること
+   - 同じ状態で再実行 → 新規いいねがなければ **0件処理かつ Redis のカーソル値が前回と同一**（`set` していない）であること
+   - いいねを1件追加して再実行 → 当該1件だけ増え、成功後カーソルが更新されること
 
 2. **Spider 取得確認**
    - `SPIDER_API_KEY` をセットし、通常の記事URLで `/scrape` 経由の本文が要約に反映されること
@@ -505,6 +556,8 @@ pipeline:
 
 ## 10. 既知の限界・運用メモ
 
+- **新規いいね 0 件とカーソル**: その実行では **`store.set` を呼ばない**。既存の `last_processed_tweet_id` を維持する。誤って `null` で上書きしたり未設定扱いに戻すと、次回に同じいいねを再処理したり境界が壊れる。
 - **カーソル未到達で `MAX_PAGES` 打ち切り**: 一度に大量にいいねした場合、API深部まで到達できず取りこぼす可能性がある。`MAX_PAGES`・アラート・手動リセット（Redisキー削除）を運用で用意する。
 - **いいねの取り消し・順序の揺れ**: 公式に `liked_at` がないため、稀な並び替えや境界条件では重複・取りこぼしのリスクがある。Slack側の重複表示許容や、ツイートID単位の冪等処理を前提にする。
 - **Spider障害時・クレジット切れ**: フォールバック取得に依存。プロキシ／レンダリングの都合で一部ドメインは失敗しうる。品質・取得率・利用クレジットは監視ログと Spider の usage で確認する。
+- **Block Kit と `parseTweetFromBlocks`**: pipeline 側の `slack-message.ts` を変えたのにパーサを更新しないと、`xUrl` 抽出失敗やマーカー不一致で `:bookmark:` が無視される。Block 順・mrkdwn 形式は **§3-1「parseTweetFromBlocks — 抽出ルール」の対応表を単一の正とする**。
