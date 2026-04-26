@@ -1,5 +1,5 @@
 import { fetchNewLikes } from "../lib/x-client";
-import { getCursor, setCursor } from "../lib/like-cursor-store";
+import { setCursor } from "../lib/like-cursor-store";
 import { fetchUrlsContent } from "../lib/web-fetcher";
 import { summarize } from "../lib/summarizer";
 import { postHeader, postThreadReply } from "../lib/slack-client";

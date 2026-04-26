@@ -36,6 +36,7 @@ async function fetchWithSpider(url: string): Promise<string | null> {
     const data = (await res.json()) as SpiderScrapeResponse;
     const item = data?.[0];
     const text = item?.markdown ?? item?.content ?? "";
+    console.log(text)
     return text.trim() || null;
   } catch {
     return null;
