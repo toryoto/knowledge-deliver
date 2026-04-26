@@ -15,6 +15,13 @@ redis.on("connect", () => {
   logger.info("redis: connected");
 });
 
+export async function connectSessionStore(): Promise<void> {
+  if (redis.status === "ready") {
+    return;
+  }
+  await redis.connect();
+}
+
 export async function getSessionId(
   source: string,
   sessionKey: string

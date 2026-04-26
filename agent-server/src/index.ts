@@ -4,9 +4,11 @@ import { logger } from "../lib/logger";
 import { agentRoute } from "./http/routes/agent";
 import { healthRoute } from "./http/routes/health";
 import { webhookRoute } from "./http/routes/webhook";
+import { connectSessionStore } from "../lib/session-store";
 import { initVault } from "./vault";
 
 await initVault();
+await connectSessionStore();
 
 const app = new Hono();
 
