@@ -38,6 +38,9 @@ export async function pullVault(): Promise<void> {
     const git = simpleGit(VAULT_PATH);
     await git.pull();
     logger.info("vault: pull done", { path: VAULT_PATH });
+  } catch (err) {
+    logger.error("vault: pull failed", err);
+    throw err;
   } finally {
     isSyncing = false;
   }
@@ -63,7 +66,15 @@ export async function commitAndPush(message: string): Promise<void> {
       const remoteUrl = remote[0].refs.push;
       await git.removeRemote("origin");
       await git.addRemote("origin", authedUrl(remoteUrl));
-      await git.push("origin", "HEAD");
+      try {
+        await git.push("origin", "HEAD");
+        logger.info("vault: push done", { path: VAULT_PATH });
+      } catch (err) {
+        logger.error("vault: push failed", err);
+        throw err;
+      }
+    } else {
+      logger.warn("vault: no remote configured, skipping push");
     }
   }
 }

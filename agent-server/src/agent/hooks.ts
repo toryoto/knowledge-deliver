@@ -1,3 +1,4 @@
+import { logger } from "../../lib/logger";
 import { commitAndPush } from "../vault";
 
 /**
@@ -11,8 +12,8 @@ export function createWriteToolPathGuard(allowedRoot: string) {
     if (filePath && !filePath.startsWith(allowedRoot)) {
       return {
         hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "deny",
+          hookEventName: "PreToolUse" as const,
+          permissionDecision: "deny" as const,
           permissionDecisionReason: `Write outside the configured vault path is not allowed: ${filePath}`,
         },
       };
@@ -26,7 +27,13 @@ export function createWriteToolPathGuard(allowedRoot: string) {
  */
 export function createAutoCommitOnStopHook() {
   return async function autoCommitOnStop() {
-    await commitAndPush("auto: agent update");
+    logger.info("hook: Stop → commit/push start");
+    try {
+      await commitAndPush("auto: agent update");
+      logger.info("hook: Stop → commit/push finished");
+    } catch (err) {
+      logger.error("hook: Stop → commit/push failed", err);
+    }
     return {};
   };
 }
