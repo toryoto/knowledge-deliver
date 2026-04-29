@@ -1,5 +1,5 @@
 import type { Block, KnownBlock } from "@slack/types";
-import { hasXArticle, type XTweet } from "../lib/x-client";
+import type { XTweet } from "../lib/x-client";
 
 const MAX_TWEET_LENGTH = 300;
 
@@ -32,7 +32,7 @@ export function buildTweetBlocks(
   ];
 
   // Block 2: summary（X Article / リンク要約）
-  if (summary && (hasXArticle(tweet) || tweet.urls.length > 0)) {
+  if (summary) {
     blocks.push({
       type: "section",
       text: {

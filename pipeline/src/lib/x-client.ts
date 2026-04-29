@@ -84,6 +84,33 @@ function shouldFetchArticleFromSingleEndpoint(tweet: TweetV2): boolean {
   return false;
 }
 
+type UrlEntry = { expanded_url?: string; url: string };
+
+/**
+ * tweet.entities.urls と note_tweet.entities.urls をマージして expanded_url の一覧を返す。
+ * note_tweet は型定義外のフィールドなので unknown 経由で安全に取り出す。
+ */
+function extractAllUrls(tweet: TweetV2, enriched: TweetV2): string[] {
+  const tweetUrls: UrlEntry[] = tweet.entities?.urls ?? [];
+  const noteUrls: UrlEntry[] = (() => {
+    const nt = (enriched as unknown as Record<string, unknown>).note_tweet;
+    if (!nt || typeof nt !== "object") return [];
+    const entities = (nt as Record<string, unknown>).entities;
+    if (!entities || typeof entities !== "object") return [];
+    const urls = (entities as Record<string, unknown>).urls;
+    return Array.isArray(urls) ? urls : [];
+  })();
+  const seen = new Set(tweetUrls.map((u) => u.url));
+  const merged = [...tweetUrls];
+  for (const nu of noteUrls) {
+    if (!seen.has(nu.url)) {
+      merged.push(nu);
+      seen.add(nu.url);
+    }
+  }
+  return merged.map((u) => u.expanded_url ?? u.url);
+}
+
 /**
  * ツイート JSON または正規化後の `XTweet` を受け取り、Article（X の `article`）を含むか
  */
@@ -171,17 +198,15 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
       }
 
       const user = userMap.get(tweet.author_id ?? "") ?? { username: "unknown", name: "Unknown" };
-      const rawUrls = (tweet.entities?.urls ?? []).map(
-        (u: { expanded_url?: string; url: string }) => u.expanded_url ?? u.url
-      );
+      const enriched = await fetchEnrichedTweetIfNeeded(tweet);
+
+      const rawUrls = extractAllUrls(tweet, enriched);
       const externalUrls = rawUrls.filter(
-        (u: string) =>
+        (u) =>
           !u.includes("x.com/") &&
           !u.includes("twitter.com/") &&
           !u.includes("pic.twitter.com")
       );
-
-      const enriched = await fetchEnrichedTweetIfNeeded(tweet);
       const noteTweetText = extractNoteTweetTextFromPayload(enriched);
       const { title: articleTitle, plainText: articlePlainText } = extractArticleFromPayload(enriched);
 
