@@ -1,4 +1,5 @@
 import { SPIDER_API_KEY, SPIDER_SCRAPE_REQUEST } from "./config";
+import { formatPipelineError } from "./error-log";
 
 const SPIDER_SCRAPE_URL = "https://api.spider.cloud/scrape";
 const FETCH_TIMEOUT_MS = 45_000;
@@ -31,14 +32,24 @@ async function fetchWithSpider(url: string): Promise<string | null> {
       signal: controller.signal,
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const snippet = await res.text().then((t) => t.slice(0, 400)).catch(() => "");
+      console.warn(`[web-fetcher] Spider HTTP ${res.status} url=${url}`, snippet || "(no body)");
+      return null;
+    }
 
     const data = (await res.json()) as SpiderScrapeResponse;
     const item = data?.[0];
+    if (item?.error) {
+      console.warn(`[web-fetcher] Spider API error url=${url}:`, item.error);
+      return null;
+    }
     const text = item?.markdown ?? item?.content ?? "";
-    console.log(text)
     return text.trim() || null;
-  } catch {
+  } catch (e) {
+    const name = e instanceof Error ? e.name : "";
+    const kind = name === "AbortError" ? "timeout or abort" : "request failed";
+    console.warn(`[web-fetcher] Spider ${kind} url=${url}:`, formatPipelineError(e));
     return null;
   } finally {
     clearTimeout(timeoutId);
@@ -51,7 +62,10 @@ async function fetchWithFallback(url: string): Promise<string | null> {
 
   try {
     const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[web-fetcher] direct fetch HTTP ${res.status} url=${url}`);
+      return null;
+    }
 
     const html = await res.text();
     // Strip HTML tags and collapse whitespace
@@ -61,7 +75,10 @@ async function fetchWithFallback(url: string): Promise<string | null> {
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim() || null;
-  } catch {
+  } catch (e) {
+    const name = e instanceof Error ? e.name : "";
+    const kind = name === "AbortError" ? "timeout or abort" : "request failed";
+    console.warn(`[web-fetcher] direct fetch ${kind} url=${url}:`, formatPipelineError(e));
     return null;
   } finally {
     clearTimeout(timeoutId);

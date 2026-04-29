@@ -16,7 +16,13 @@ export async function askAgent(message: string, sessionKey: string): Promise<str
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as AgentErrorResponse;
+      const raw = await response.text();
+      let payload: AgentErrorResponse = {};
+      try {
+        payload = raw ? (JSON.parse(raw) as AgentErrorResponse) : {};
+      } catch {
+        console.warn(`[agent-client] error body was not JSON (status=${response.status}): ${raw.slice(0, 500)}`);
+      }
       throw new Error(payload.error ?? `Agent request failed (${response.status})`);
     }
 

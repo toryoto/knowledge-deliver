@@ -13,7 +13,7 @@ function normalizeUrl(raw: string): string {
       return u.toString().replace(/\/+$/, "");
     }
   } catch {
-    // invalid URL — pass through to fetch
+    // invalid URL はそのまま返す（下流の fetch で失敗として扱う）
   }
   return trimmed;
 }

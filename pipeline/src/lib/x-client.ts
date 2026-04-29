@@ -1,15 +1,7 @@
-import { TwitterApi, TweetV2UserLikedTweetsPaginator } from "twitter-api-v2";
+import { TwitterApi, TweetV2UserLikedTweetsPaginator, type TweetV2 } from "twitter-api-v2";
 import { X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET, X_USER_ID, MAX_PAGES } from "./config";
+import { formatPipelineError } from "./error-log";
 import { getCursor } from "./like-cursor-store";
-
-export type XTweet = {
-  id: string;
-  text: string;
-  authorUsername: string;
-  authorName: string;
-  url: string;
-  urls: string[];
-};
 
 const client = new TwitterApi({
   appKey: X_API_KEY,
@@ -18,16 +10,145 @@ const client = new TwitterApi({
   accessSecret: X_ACCESS_SECRET,
 });
 
+/** liked_tweets は max_results の最小が 5。1 などは 400 Invalid Request になる */
+const LIKED_TWEETS_MIN_PAGE_SIZE = 5;
+
+/**
+ * liked_tweets でも GET /2/tweets/:id でも同じ set を渡す（一覧が note_tweet を省くケースの補完用）
+ * @see https://docs.x.com/x-api/posts/get-liked-posts
+ */
+const LIKED_TWEET_FIELDS: (keyof TweetV2)[] = [
+  "text",
+  "author_id",
+  "created_at",
+  "entities",
+  "note_tweet",
+  "article", // X Article（`GET /2/tweets/:id?tweet.fields=article` と同系）
+];
+
+/**
+ * API の生レスポンスから note_tweet.text を取り出す（型・大文字小文字差で落ちないようにする）
+ */
+function extractNoteTweetTextFromPayload(tweet: unknown): string | null {
+  if (!tweet || typeof tweet !== "object") return null;
+  const t = tweet as Record<string, unknown>;
+  const note = t.note_tweet;
+  if (!note || typeof note !== "object") return null;
+  const text = (note as { text?: unknown }).text;
+  if (typeof text !== "string") return null;
+  const s = text.trim();
+  return s || null;
+}
+
+/**
+ * API の `article` オブジェクトからタイトル・本文を取り出す（X Article / plain_text, preview_text, title）
+ */
+function extractArticleFromPayload(tweet: unknown): {
+  title: string | null;
+  plainText: string | null;
+} {
+  if (!tweet || typeof tweet !== "object") {
+    return { title: null, plainText: null };
+  }
+  const raw = (tweet as Record<string, unknown>).article;
+  if (!raw || typeof raw !== "object") {
+    return { title: null, plainText: null };
+  }
+  const a = raw as Record<string, unknown>;
+  const title = typeof a.title === "string" && a.title.trim() ? a.title.trim() : null;
+  let plainText: string | null = null;
+  if (typeof a.plain_text === "string" && a.plain_text.trim()) {
+    plainText = a.plain_text.trim();
+  } else if (typeof a.plainText === "string" && a.plainText.trim()) {
+    plainText = a.plainText.trim();
+  } else if (typeof a.preview_text === "string" && a.preview_text.trim()) {
+    plainText = a.preview_text.trim();
+  }
+  return { title, plainText };
+}
+
+/** 一覧に note_tweet が付かないが、長文/省略表示の可能性があるときだけ単体取得する */
+function shouldFetchNoteTweetFromSingleEndpoint(tweet: TweetV2): boolean {
+  const text = tweet.text ?? "";
+  if (text.length >= 260) return true;
+  if (/\u2026|\.\.\./.test(text)) return true;
+  return false;
+}
+
+/** 一覧に article が付かないが、カード系（短い t.co 等）のときだけ単体取得を試す */
+function shouldFetchArticleFromSingleEndpoint(tweet: TweetV2): boolean {
+  const t = (tweet.text ?? "").trim();
+  if (t.length === 0) return false;
+  if (t.length < 200 && /^https?:\/\/t\.co\/\S+$/i.test(t)) return true;
+  if (t.length < 100 && t.includes("t.co/")) return true;
+  return false;
+}
+
+/**
+ * ツイート JSON または正規化後の `XTweet` を受け取り、Article（X の `article`）を含むか
+ */
+export function hasXArticle(tweet: unknown): boolean {
+  if (!tweet || typeof tweet !== "object") return false;
+  const o = tweet as Record<string, unknown>;
+  if ("articlePlainText" in o || "articleTitle" in o) {
+    const ap = o.articlePlainText;
+    const at = o.articleTitle;
+    return (
+      (typeof ap === "string" && ap.trim().length > 0) || (typeof at === "string" && at.trim().length > 0)
+    );
+  }
+  const { title, plainText } = extractArticleFromPayload(tweet);
+  return Boolean(title || plainText);
+}
+
+/**
+ * まず liked_tweets の要素を使い、必要なら 1 回の GET /2/tweets/:id で note_tweet / article を補完する。
+ */
+async function fetchEnrichedTweetIfNeeded(tweet: TweetV2): Promise<TweetV2> {
+  const noteFromList = extractNoteTweetTextFromPayload(tweet);
+  const artFromList = extractArticleFromPayload(tweet);
+  const hasArt = Boolean(artFromList.plainText || artFromList.title);
+
+  const needNote = !noteFromList && shouldFetchNoteTweetFromSingleEndpoint(tweet);
+  const needArt = !hasArt && shouldFetchArticleFromSingleEndpoint(tweet);
+  if (!needNote && !needArt) {
+    return tweet;
+  }
+  try {
+    const { data } = await client.v2.singleTweet(tweet.id, { "tweet.fields": LIKED_TWEET_FIELDS });
+    return data;
+  } catch (e) {
+    console.warn(
+      `[x-client] singleTweet(${tweet.id}) for note_tweet/article enrich failed:`,
+      formatPipelineError(e)
+    );
+    return tweet;
+  }
+}
+
+export type XTweet = {
+  id: string;
+  text: string;
+  /** `tweet.fields=note_tweet`（長文ポスト用） */
+  noteTweetText: string | null;
+  /** `tweet.fields=article` — X Article のタイトル・本文 */
+  articleTitle: string | null;
+  articlePlainText: string | null;
+  authorUsername: string;
+  authorName: string;
+  url: string;
+  urls: string[];
+};
+
 export async function fetchNewLikes(): Promise<XTweet[]> {
   const cursor = await getCursor();
-  // const isFirstRun = cursor === null;
-  const isFirstRun = true
+  const isFirstRun = cursor === null;
 
   const paginator: TweetV2UserLikedTweetsPaginator = await client.v2.userLikedTweets(X_USER_ID, {
-    "tweet.fields": ["text", "author_id", "created_at", "entities"],
+    "tweet.fields": LIKED_TWEET_FIELDS,
     expansions: ["author_id"],
     "user.fields": ["username", "name"],
-    max_results: isFirstRun ? 1 : 100,
+    max_results: isFirstRun ? LIKED_TWEETS_MIN_PAGE_SIZE : 100,
   });
 
   const newTweets: XTweet[] = [];
@@ -38,11 +159,11 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
   while (true) {
     const allTweets = paginator.tweets;
     const userMap = new Map(
-      paginator.includes.users.map((u) => [u.id, { username: u.username, name: u.name }])
+      (paginator.includes?.users ?? []).map((u) => [u.id, { username: u.username, name: u.name }])
     );
 
     for (let i = processedCount; i < allTweets.length; i++) {
-      const tweet = allTweets[i];
+      const tweet = allTweets[i] as TweetV2;
 
       if (!isFirstRun && tweet.id === cursor) {
         cursorReached = true;
@@ -60,9 +181,16 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
           !u.includes("pic.twitter.com")
       );
 
+      const enriched = await fetchEnrichedTweetIfNeeded(tweet);
+      const noteTweetText = extractNoteTweetTextFromPayload(enriched);
+      const { title: articleTitle, plainText: articlePlainText } = extractArticleFromPayload(enriched);
+
       newTweets.push({
         id: tweet.id,
         text: tweet.text,
+        noteTweetText,
+        articleTitle: articleTitle ?? null,
+        articlePlainText: articlePlainText ?? null,
         authorUsername: user.username,
         authorName: user.name,
         url: `https://x.com/${user.username}/status/${tweet.id}`,
@@ -72,7 +200,12 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
 
     processedCount = allTweets.length;
 
-    if (cursorReached || isFirstRun || !paginator.meta?.next_token || pageCount >= MAX_PAGES) {
+    if (
+      cursorReached ||
+      isFirstRun ||
+      !paginator.meta?.next_token ||
+      pageCount >= MAX_PAGES
+    ) {
       break;
     }
 
@@ -80,7 +213,12 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
     pageCount++;
   }
 
-  if (!cursorReached && !isFirstRun && pageCount >= MAX_PAGES && newTweets.length > 0) {
+  if (
+    !cursorReached &&
+    !isFirstRun &&
+    pageCount >= MAX_PAGES &&
+    newTweets.length > 0
+  ) {
     console.warn(
       `[x-client] MAX_PAGES (${MAX_PAGES}) reached without finding cursor ${cursor}. Some likes may be missed.`
     );
