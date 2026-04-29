@@ -16,7 +16,9 @@ export async function runCollectXLikesJob(): Promise<void> {
   console.log(`[collect-x-likes] fetched ${newTweets.length} new like(s)`);
 
   if (newTweets.length === 0) {
-    console.log("[collect-x-likes] no new likes, skipping Slack post and cursor update");
+    const emptyText = `*X Likes Digest — ${getTodayLabel()}* — 新しいいいねはありません`;
+    await postHeader(emptyText);
+    console.log("[collect-x-likes] no new likes, posted notice to Slack (cursor unchanged)");
     return;
   }
 
