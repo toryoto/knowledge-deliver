@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { recordAnthropicUsage } from "observability";
 import { ANTHROPIC_API_KEY } from "./config";
 import type { XTweet } from "./x-client";
 
@@ -49,16 +48,6 @@ export const summarize = async (tweet: XTweet, webContent: string | null): Promi
       },
     ],
     messages: [{ role: "user", content: userContent }],
-  });
-
-  const usage = response.usage;
-  recordAnthropicUsage({
-    model: SUMMARIZE_MODEL,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheCreationInputTokens: (usage as unknown as Record<string, unknown>).cache_creation_input_tokens as number | undefined,
-    cacheReadInputTokens: (usage as unknown as Record<string, unknown>).cache_read_input_tokens as number | undefined,
-    label: `tweet:${tweet.id}`,
   });
 
   const block = response.content[0];

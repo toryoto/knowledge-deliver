@@ -1,4 +1,4 @@
-import { setContext, addBreadcrumb } from "observability";
+import { setContext, addBreadcrumb, captureError } from "observability";
 import { fetchNewLikes, hasXArticle } from "../lib/x-client";
 import { setCursor } from "../lib/like-cursor-store";
 import { fetchUrlsContent } from "../lib/web-fetcher";
@@ -43,33 +43,46 @@ export async function runCollectXLikesJob(): Promise<void> {
     });
 
     let summary: string | null = null;
-    if (hasXArticle(tweet)) {
-      const parts: string[] = [];
-      if (tweet.articleTitle) parts.push(`タイトル: ${tweet.articleTitle}`);
-      if (tweet.articlePlainText) {
-        parts.push(`本文 (API article.plain_text / preview_text):\n${tweet.articlePlainText}`);
+    try {
+      if (hasXArticle(tweet)) {
+        const parts: string[] = [];
+        if (tweet.articleTitle) parts.push(`タイトル: ${tweet.articleTitle}`);
+        if (tweet.articlePlainText) {
+          parts.push(`本文 (API article.plain_text / preview_text):\n${tweet.articlePlainText}`);
+        }
+        const articleBlock = parts.join("\n\n");
+        if (articleBlock.trim()) {
+          summary = await summarize(tweet, articleBlock);
+        }
+      } else {
+        const linkContent = await fetchUrlsContent(tweet.urls);
+        const digestParts: string[] = [];
+        if (tweet.noteTweetText) {
+          digestParts.push(`note_tweet:\n${tweet.noteTweetText}`);
+        }
+        if (linkContent) {
+          digestParts.push(`リンク先の内容:\n${linkContent}`);
+        }
+        const digestBody = digestParts.length > 0 ? digestParts.join("\n\n---\n\n") : null;
+        if (digestBody) {
+          summary = await summarize(tweet, digestBody);
+        }
       }
-      const articleBlock = parts.join("\n\n");
-      if (articleBlock.trim()) {
-        summary = await summarize(tweet, articleBlock);
-      }
-    } else {
-      const linkContent = await fetchUrlsContent(tweet.urls);
-      const digestParts: string[] = [];
-      if (tweet.noteTweetText) {
-        digestParts.push(`note_tweet:\n${tweet.noteTweetText}`);
-      }
-      if (linkContent) {
-        digestParts.push(`リンク先の内容:\n${linkContent}`);
-      }
-      const digestBody = digestParts.length > 0 ? digestParts.join("\n\n---\n\n") : null;
-      if (digestBody) {
-        summary = await summarize(tweet, digestBody);
-      }
+    } catch (err) {
+      console.error(`[collect-x-likes] summarize failed for tweet ${tweet.id}:`, err);
+      captureError(err, { tweetId: tweet.id, tweetUrl: tweet.url }, { step: "tweet.summarize" });
+      // summary は null のまま投稿を継続する
     }
-    const blocks = buildTweetBlocks(tweet, summary);
-    await postThreadReply(blocks, headerTs, `${tweet.authorName}: ${tweet.text.slice(0, 100)}`);
-    console.log(`[collect-x-likes] posted tweet ${tweet.id}`);
+
+    try {
+      const blocks = buildTweetBlocks(tweet, summary);
+      await postThreadReply(blocks, headerTs, `${tweet.authorName}: ${tweet.text.slice(0, 100)}`);
+      console.log(`[collect-x-likes] posted tweet ${tweet.id}`);
+    } catch (err) {
+      console.error(`[collect-x-likes] post failed for tweet ${tweet.id}:`, err);
+      captureError(err, { tweetId: tweet.id, tweetUrl: tweet.url }, { step: "tweet.post" });
+      throw err; // Slack 投稿失敗はジョブ全体を止める（カーソル更新させない）
+    }
   }
 
   // Cursor update only after all posts succeed

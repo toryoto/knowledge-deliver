@@ -1,3 +1,4 @@
+import { captureError } from "observability";
 import { SPIDER_API_KEY, SPIDER_SCRAPE_REQUEST } from "./config";
 import { formatPipelineError } from "./error-log";
 
@@ -35,6 +36,11 @@ async function fetchWithSpider(url: string): Promise<string | null> {
     if (!res.ok) {
       const snippet = await res.text().then((t) => t.slice(0, 400)).catch(() => "");
       console.warn(`[web-fetcher] Spider HTTP ${res.status} url=${url}`, snippet || "(no body)");
+      captureError(
+        new Error(`Spider HTTP ${res.status}`),
+        { url, httpStatus: res.status, snippet: snippet || undefined },
+        { step: "web-fetcher.spider", provider: "spider" },
+      );
       return null;
     }
 
@@ -42,6 +48,11 @@ async function fetchWithSpider(url: string): Promise<string | null> {
     const item = data?.[0];
     if (item?.error) {
       console.warn(`[web-fetcher] Spider API error url=${url}:`, item.error);
+      captureError(
+        new Error(`Spider API error: ${item.error}`),
+        { url, spiderError: item.error },
+        { step: "web-fetcher.spider", provider: "spider" },
+      );
       return null;
     }
     const text = item?.markdown ?? item?.content ?? "";
@@ -50,6 +61,7 @@ async function fetchWithSpider(url: string): Promise<string | null> {
     const name = e instanceof Error ? e.name : "";
     const kind = name === "AbortError" ? "timeout or abort" : "request failed";
     console.warn(`[web-fetcher] Spider ${kind} url=${url}:`, formatPipelineError(e));
+    captureError(e, { url, kind }, { step: "web-fetcher.spider", provider: "spider" });
     return null;
   } finally {
     clearTimeout(timeoutId);
