@@ -1,7 +1,7 @@
 {
   "name": "obsidian-agent",
   "private": true,
-  "workspaces": ["agent-server", "slack-bot", "pipeline"],
+  "workspaces": ["agent-server", "slack-bot", "pipeline", "observability"],
   "scripts": {
     "dev": "bun --filter agent-server dev",
     "dev:slack": "bun --filter slack-bot dev",

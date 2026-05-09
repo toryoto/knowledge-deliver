@@ -1,3 +1,4 @@
+import { setContext, addBreadcrumb } from "observability";
 import { fetchNewLikes, hasXArticle } from "../lib/x-client";
 import { setCursor } from "../lib/like-cursor-store";
 import { fetchUrlsContent } from "../lib/web-fetcher";
@@ -26,8 +27,21 @@ export async function runCollectXLikesJob(): Promise<void> {
   const headerTs = await postHeader(headerText);
   console.log(`[collect-x-likes] header posted (ts=${headerTs})`);
 
+  setContext("job", { name: "collect-x-likes", tweetCount: newTweets.length });
+
   // Sequential processing per spec (Slack rate limit 対策)
   for (const tweet of newTweets) {
+    setContext("current_tweet", {
+      id: tweet.id,
+      url: tweet.url,
+      authorUsername: tweet.authorUsername,
+    });
+    addBreadcrumb({
+      category: "pipeline.tweet",
+      message: `Processing tweet ${tweet.id}`,
+      level: "info",
+    });
+
     let summary: string | null = null;
     if (hasXArticle(tweet)) {
       const parts: string[] = [];

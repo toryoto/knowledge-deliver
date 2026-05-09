@@ -1,4 +1,5 @@
 import type { App } from "@slack/bolt";
+import { captureError } from "observability";
 import { SLACK_DIGEST_CHANNEL_ID, SAVE_REACTION_EMOJI } from "../config";
 import { askAgent } from "../agent-client";
 
@@ -42,6 +43,12 @@ export function registerReactionHandler(app: App): void {
       await askAgent(prompt, "import-x-post");
     } catch (err) {
       logger.error("reaction handler failed", err);
+      captureError(err, {
+        event_type: "reaction_added",
+        channel: event.item.channel,
+        ts: event.item.ts,
+        reaction: event.reaction,
+      }, { step: "slack.reaction" });
     }
   });
 }

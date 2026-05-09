@@ -1,9 +1,12 @@
+import { initObservability } from "observability";
 import { App } from "@slack/bolt";
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from "./config";
 import { registerCommandHandlers } from "./handlers/commands";
 import { registerDmHandler } from "./handlers/dm";
 import { registerMentionHandler } from "./handlers/mention";
 import { registerReactionHandler } from "./handlers/reaction";
+
+initObservability({ service: "slack-bot" });
 
 const app = new App({
   token: SLACK_BOT_TOKEN,

@@ -1,14 +1,59 @@
 import { logger } from "../../lib/logger";
 
+export type AgentStreamUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  totalCostUsd?: number;
+  modelUsage?: Record<string, unknown>;
+};
+
+export type ConsumeResult = {
+  sessionId: string;
+  result: string;
+  usage: AgentStreamUsage;
+};
+
+/**
+ * result message から usage / cost フィールドを安全に取り出す。
+ * SDK バージョンによって存在しない場合があるため optional で返す。
+ */
+const extractUsageFromResult = (message: Record<string, unknown>): AgentStreamUsage => {
+  const out: AgentStreamUsage = {};
+
+  const cost = message.total_cost_usd;
+  if (typeof cost === "number") out.totalCostUsd = cost;
+
+  const usage = message.usage;
+  if (usage && typeof usage === "object") {
+    const u = usage as Record<string, unknown>;
+    if (typeof u.input_tokens === "number") out.inputTokens = u.input_tokens;
+    if (typeof u.output_tokens === "number") out.outputTokens = u.output_tokens;
+    if (typeof u.cache_creation_input_tokens === "number")
+      out.cacheCreationInputTokens = u.cache_creation_input_tokens;
+    if (typeof u.cache_read_input_tokens === "number")
+      out.cacheReadInputTokens = u.cache_read_input_tokens;
+  }
+
+  const modelUsage = message.modelUsage ?? message.model_usage;
+  if (modelUsage && typeof modelUsage === "object") {
+    out.modelUsage = modelUsage as Record<string, unknown>;
+  }
+
+  return out;
+};
+
 /**
  * claude-agent-sdk のストリームを走査し、session_id と最終 result を取り出す。
  * エラーサブタイプの result メッセージは例外に変換する。
  */
-export async function consumeClaudeAgentStream(
-  stream: AsyncIterable<unknown>
-): Promise<{ sessionId: string; result: string }> {
+export const consumeClaudeAgentStream = async (
+  stream: AsyncIterable<unknown>,
+): Promise<ConsumeResult> => {
   let sessionId: string | undefined;
   let result: string | undefined;
+  let usage: AgentStreamUsage = {};
 
   for await (const msg of stream) {
     const message = msg as Record<string, unknown>;
@@ -36,6 +81,7 @@ export async function consumeClaudeAgentStream(
 
     if (message.type === "result" && message.subtype === "success") {
       result = (message.result as string) ?? "";
+      usage = extractUsageFromResult(message);
       logger.debug("agent: result success", { chars: result.length });
     }
 
@@ -58,5 +104,5 @@ export async function consumeClaudeAgentStream(
     throw new Error("No result received from agent");
   }
 
-  return { sessionId, result };
-}
+  return { sessionId, result, usage };
+};

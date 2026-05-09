@@ -1,4 +1,5 @@
 import type { App } from "@slack/bolt";
+import { captureError } from "observability";
 import { askAgent } from "../agent-client";
 
 function toSessionKey(channelId: string, threadTs?: string): string {
@@ -22,6 +23,7 @@ export function registerCommandHandlers(app: App): void {
       await respond({ response_type: "ephemeral", text });
     } catch (error) {
       logger.error("/note failed", error);
+      captureError(error, { command: "/note", channel: command.channel_id, sessionKey }, { step: "slack.command" });
       await respond("エージェント呼び出しに失敗しました。時間をおいて再試行してください。");
     }
   });
@@ -35,6 +37,7 @@ export function registerCommandHandlers(app: App): void {
       await respond({ response_type: "ephemeral", text });
     } catch (error) {
       logger.error("/daily failed", error);
+      captureError(error, { command: "/daily", channel: command.channel_id, sessionKey }, { step: "slack.command" });
       await respond("エージェント呼び出しに失敗しました。時間をおいて再試行してください。");
     }
   });
@@ -55,6 +58,7 @@ export function registerCommandHandlers(app: App): void {
       await respond({ response_type: "ephemeral", text });
     } catch (error) {
       logger.error("/search failed", error);
+      captureError(error, { command: "/search", channel: command.channel_id, sessionKey }, { step: "slack.command" });
       await respond("エージェント呼び出しに失敗しました。時間をおいて再試行してください。");
     }
   });

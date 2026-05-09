@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { recordAnthropicUsage } from "observability";
 import { ANTHROPIC_API_KEY } from "./config";
 import type { XTweet } from "./x-client";
 
@@ -30,13 +31,15 @@ const SYSTEM_PROMPT = `あなたは、社内のSlack用に「その投稿単体�
 
 書式：Slack向け。太字用の *（アスタリスク）は使わない。## で見出し。改行を多用。箇条書きは ・ か - で統一。`;
 
-export async function summarize(tweet: XTweet, webContent: string | null): Promise<string> {
+const SUMMARIZE_MODEL = "claude-haiku-4-5";
+
+export const summarize = async (tweet: XTweet, webContent: string | null): Promise<string> => {
   const userContent = webContent
     ? `ツイート:\n${tweet.text}\n\n要約用の本文（Article / リンク先）:\n${webContent}`
     : `ツイート:\n${tweet.text}`;
 
   const response = await client.messages.create({
-    model: "claude-haiku-4-5",
+    model: SUMMARIZE_MODEL,
     max_tokens: 3072,
     system: [
       {
@@ -48,7 +51,17 @@ export async function summarize(tweet: XTweet, webContent: string | null): Promi
     messages: [{ role: "user", content: userContent }],
   });
 
+  const usage = response.usage;
+  recordAnthropicUsage({
+    model: SUMMARIZE_MODEL,
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheCreationInputTokens: (usage as unknown as Record<string, unknown>).cache_creation_input_tokens as number | undefined,
+    cacheReadInputTokens: (usage as unknown as Record<string, unknown>).cache_read_input_tokens as number | undefined,
+    label: `tweet:${tweet.id}`,
+  });
+
   const block = response.content[0];
   if (block.type !== "text") return "";
   return block.text.trim();
-}
+};

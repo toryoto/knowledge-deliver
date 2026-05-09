@@ -5,7 +5,7 @@
 ## 1. System & Tech Stack
 
 - Current runtime: Bun 1.x workspaces.
-- Current packages: `agent-server`, `slack-bot`, `pipeline`.
+- Current packages: `agent-server`, `slack-bot`, `pipeline`, `observability` (shared).
 - Current backend: Hono HTTP API, Slack Bolt bot, Redis-backed integrations, Claude/Anthropic SDK usage.
 - Frontend standard, when a frontend is added: Next.js App Router with TypeScript.
 - Style standard, when UI is added: Tailwind CSS and shadcn/ui.
@@ -69,6 +69,7 @@ If an npm script listed above does not exist yet, do not invent behavior silentl
 - `agent-server` contains the Hono API and agent orchestration.
 - `slack-bot` contains Slack event handling and bot entrypoints.
 - `pipeline` contains background jobs and X/Slack related integrations.
+- `observability` is a shared package providing Sentry initialization and capture helpers. Each runtime imports and calls `initObservability({ service })` at startup.
 - Root `package.json` is a Bun workspace manifest, not a complete npm script surface today.
 - Prefer package-local changes when behavior belongs to a single workspace.
 - Shared behavior should be extracted only after real duplication or a stable cross-package contract appears.
