@@ -1,3 +1,4 @@
+import { initObservability, captureError } from "observability";
 import { Hono } from "hono";
 import { PORT } from "../lib/config";
 import { logger } from "../lib/logger";
@@ -6,6 +7,8 @@ import { healthRoute } from "./http/routes/health";
 import { webhookRoute } from "./http/routes/webhook";
 import { connectSessionStore } from "../lib/session-store";
 import { initVault } from "./vault";
+
+initObservability({ service: "agent-server" });
 
 await initVault();
 await connectSessionStore();
@@ -40,6 +43,7 @@ app.route("/health", healthRoute);
 
 app.onError((err, c) => {
   logger.error("unhandled", err, { path: c.req.path });
+  captureError(err, { path: c.req.path, method: c.req.method }, { step: "http.unhandled" });
   return c.json({ error: "Internal server error" }, 500);
 });
 

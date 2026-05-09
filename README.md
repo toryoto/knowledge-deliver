@@ -94,6 +94,39 @@ X / Slack 連携などのジョブ。Redis・外部 API キーを想定。`packa
 
 ---
 
+## Sentry（Observability）
+
+エラー監視と Agent/Anthropic のトークン使用量計測に Sentry を使います。shared package `observability/` に Sentry ラッパーを集約し、各パッケージの entrypoint で `initObservability({ service })` を呼ぶだけで接続します。
+
+### セットアップ
+
+1. [Sentry](https://sentry.io/) で Node.js プロジェクトを作成し、DSN を取得する
+2. 各パッケージの `.env` に `SENTRY_DSN` を設定する（`.env.example` 参照）
+3. 必要に応じて `SENTRY_ENVIRONMENT`（production / staging 等）を設定する
+
+### Slack 通知
+
+Sentry の **Slack Integration** を使い、Sentry 側の **Alert Rule** で Slack チャンネルに通知します。アプリコードから直接 Slack に通知を送る構成ではありません。
+
+推奨 Alert Rule 例:
+
+| 条件 | 値 |
+|------|-----|
+| Environment | `production` |
+| Level | `error` 以上 |
+| Action | Slack の運用チャンネルに通知 |
+
+Sentry 画面では tags（`service`, `step`, `source`, `provider` 等）と context（`agent_request`, `current_tweet`, `details` 等）で検索・ドリルダウンできます。
+
+### 送信されるデータ
+
+- **エラー**: 全パッケージの未処理例外、Agent 実行失敗、Cron ジョブ失敗、Slack handler 失敗。失敗箇所（step）、source、sessionKey、HTTP status 等をタグ/context に含みます。
+- **Agent 使用量** (`agent.usage`): `input_tokens`, `output_tokens`, `cache_*_tokens`, `total_cost_usd`, `modelUsage`, `durationMs`。Claude Agent SDK の result message から取得します。
+- **Anthropic 要約使用量** (`anthropic.usage`): `input_tokens`, `output_tokens`, `cache_*_tokens`。pipeline の記事要約で使用する `claude-haiku-4-5` の呼び出しごとに記録します。
+- プロンプト全文やメッセージ本文は PII/機密の可能性があるため送信しません。
+
+---
+
 ## Docker
 
 `docker compose` で `agent-server`・`redis`・`slack-bot`・`pipeline` をまとめて起動する定義あり（`docker-compose.yml`）。各サービス用の `Dockerfile` は各パッケージディレクトリ内です。

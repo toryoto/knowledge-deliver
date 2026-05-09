@@ -1,3 +1,4 @@
+import { captureError, setContext, recordAgentUsage } from "observability";
 import { Hono } from "hono";
 import { z } from "zod";
 import { runAgent } from "../../agent";
@@ -52,11 +53,30 @@ agentRoute.post("/", async (c) => {
     resume: existingSessionId ? 1 : 0,
   });
 
+  setContext("agent_request", {
+    source,
+    sessionKey,
+    messageChars: message.length,
+    resume: existingSessionId ? true : false,
+  });
+
   try {
-    const { result, sessionId } = await runAgent({
+    const { result, sessionId, usage, durationMs } = await runAgent({
       message,
       sessionId: existingSessionId ?? undefined,
       vaultPath: VAULT_PATH,
+    });
+
+    recordAgentUsage({
+      source,
+      sessionKey,
+      durationMs,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cacheCreationInputTokens: usage.cacheCreationInputTokens,
+      cacheReadInputTokens: usage.cacheReadInputTokens,
+      totalCostUsd: usage.totalCostUsd,
+      modelUsage: usage.modelUsage,
     });
 
     await saveSessionId(source, sessionKey, sessionId).catch((err) => {
@@ -67,6 +87,7 @@ agentRoute.post("/", async (c) => {
     return c.json({ text: result });
   } catch (err) {
     logger.error("agent: run failed", err, { source, sessionKey });
+    captureError(err, { source, sessionKey, messageChars: message.length }, { step: "agent.run" });
     throw err;
   }
 });

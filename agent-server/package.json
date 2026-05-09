@@ -11,6 +11,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.119",
     "hono": "^4.12.15",
     "ioredis": "^5.0.2",
+    "observability": "workspace:*",
     "simple-git": "^3.36.0",
     "zod": "^4.3.6"
   },

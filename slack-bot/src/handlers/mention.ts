@@ -1,4 +1,5 @@
 import type { App } from "@slack/bolt";
+import { captureError } from "observability";
 import { askAgent } from "../agent-client";
 
 function stripMentionPrefix(text: string): string {
@@ -23,6 +24,7 @@ export function registerMentionHandler(app: App): void {
       await say({ thread_ts: sessionKey, text });
     } catch (error) {
       logger.error("app_mention handler failed", error);
+      captureError(error, { event_type: "app_mention", channel: event.channel, sessionKey }, { step: "slack.mention" });
       await say({
         thread_ts: sessionKey,
         text: "エージェント呼び出しに失敗しました。時間をおいて再試行してください。",

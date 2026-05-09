@@ -1,6 +1,7 @@
 import type { App } from "@slack/bolt";
 import type { MessageEvent } from "@slack/types";
 import type { WebClient } from "@slack/web-api";
+import { captureError } from "observability";
 import { askAgent } from "../agent-client";
 
 async function isDirectMessageChannel(
@@ -61,6 +62,7 @@ export function registerDmHandler(app: App): void {
       await say({ thread_ts: sessionKey, text });
     } catch (error) {
       logger.error("dm handler failed", error);
+      captureError(error, { event_type: "message", channel: e.channel, sessionKey }, { step: "slack.dm" });
       await say({
         thread_ts: sessionKey,
         text: "エージェント呼び出しに失敗しました。時間をおいて再試行してください。",
