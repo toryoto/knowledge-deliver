@@ -2,10 +2,13 @@ FROM oven/bun:1-alpine
 
 WORKDIR /app
 
-COPY package.json ./
-RUN bun install
+COPY package.json bun.lock ./
+COPY observability ./observability
+COPY agent-server ./agent-server
+COPY slack-bot ./slack-bot
+COPY pipeline ./pipeline
 
-COPY src ./src
+RUN bun install --frozen-lockfile
 
 ENV NODE_ENV=production
-CMD ["bun", "src/index.ts"]
+CMD ["bun", "run", "--filter", "slack-bot", "start"]

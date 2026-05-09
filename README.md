@@ -1,7 +1,5 @@
 # knowledge-driver
 
-Bun ワークスペース（`agent-server` / `slack-bot` / `pipeline`）の開発用メモです。
-
 ## 前提
 
 - [Bun](https://bun.sh/) 1.x
@@ -129,4 +127,22 @@ Sentry 画面では tags（`service`, `step`, `source`, `provider` 等）と con
 
 ## Docker
 
-`docker compose` で `agent-server`・`redis`・`slack-bot`・`pipeline` をまとめて起動する定義あり（`docker-compose.yml`）。各サービス用の `Dockerfile` は各パッケージディレクトリ内です。
+`docker compose` で `agent-server`・`redis`・`slack-bot`・`pipeline` をまとめて起動する定義あり（`docker-compose.yml`）。
+
+### ビルドコンテキスト
+
+Bun workspace の `observability` を参照するため、**Docker の build context はリポジトリルート（`.`）**です。`docker-compose.yml` では各サービスとも `context: .` と `dockerfile: <pkg>/Dockerfile` を指定しています。
+
+### Railway
+
+サービスごとに **Root Directory をリポジトリのルート**にし、**Dockerfile Path** に例えば次を指定してください。
+
+| サービス | Dockerfile Path |
+|----------|-----------------|
+| agent-server | `agent-server/Dockerfile` |
+| slack-bot | `slack-bot/Dockerfile` |
+| pipeline | `pipeline/Dockerfile` |
+
+Root Directory を `agent-server` などサブフォルダだけにすると、`workspace:*` の `observability` が解決できず `bun install` が失敗します。
+
+ルートに `.dockerignore` があり、`node_modules` などをビルドコンテキストから除外します。
