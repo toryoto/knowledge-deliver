@@ -1,4 +1,5 @@
 import { TwitterApi, TweetV2UserLikedTweetsPaginator, type TweetV2 } from "twitter-api-v2";
+import { captureMessage } from "observability";
 import { X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET, X_USER_ID, MAX_PAGES, MAX_COLLECT_TWEETS } from "./config";
 import { formatPipelineError } from "./error-log";
 import { getCursor } from "./like-cursor-store";
@@ -220,17 +221,6 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
     pageCount++;
   }
 
-  if (
-    !cursorReached &&
-    !isFirstRun &&
-    pageCount >= MAX_PAGES &&
-    candidateTweets.length > 0
-  ) {
-    console.warn(
-      `[x-client] MAX_PAGES (${MAX_PAGES}) reached without finding cursor ${cursor}. Some likes may be missed.`
-    );
-  }
-
   let tweetsToEnrich: TweetV2[];
   if (isFirstRun) {
     tweetsToEnrich = candidateTweets;
@@ -242,11 +232,14 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
     }
     tweetsToEnrich = candidateTweets.slice(0, MAX_COLLECT_TWEETS);
   } else {
-    if (candidateTweets.length > CURSOR_NOT_FOUND_MAX_TWEETS) {
-      console.warn(
-        `[x-client] cursor ${cursor} not found in liked posts; processing top ${CURSOR_NOT_FOUND_MAX_TWEETS} only (e.g. unliked edge).`
-      );
-    }
+    const msg = `[x-client] cursor ${cursor} not found in liked posts; processing top ${CURSOR_NOT_FOUND_MAX_TWEETS} only (e.g. unliked edge).`;
+    console.warn(msg);
+    captureMessage(
+      msg,
+      "warning",
+      { cursor, candidateCount: candidateTweets.length, pageCount, maxPages: MAX_PAGES },
+      { step: "fetchNewLikes.cursorNotFound" },
+    );
     tweetsToEnrich = candidateTweets.slice(0, CURSOR_NOT_FOUND_MAX_TWEETS);
   }
 

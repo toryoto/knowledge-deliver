@@ -1,4 +1,4 @@
-import { addBreadcrumb, captureMessage } from "./capture";
+import { addBreadcrumb } from "./capture";
 
 export type AgentUsageData = {
   source: string;
@@ -13,7 +13,8 @@ export type AgentUsageData = {
 };
 
 /**
- * Claude Agent SDK の usage/cost 情報を Sentry breadcrumb + info-level event に記録する。
+ * Claude Agent SDK の usage/cost 情報を Sentry breadcrumb に記録する。
+ * Issue を生成する captureMessage は使わない（usage 計測はエラーではないため）。
  */
 export const recordAgentUsage = (data: AgentUsageData): void => {
   const breadcrumbData: Record<string, unknown> = {
@@ -29,6 +30,7 @@ export const recordAgentUsage = (data: AgentUsageData): void => {
   if (data.cacheReadInputTokens !== undefined)
     breadcrumbData.cacheReadInputTokens = data.cacheReadInputTokens;
   if (data.totalCostUsd !== undefined) breadcrumbData.totalCostUsd = data.totalCostUsd;
+  if (data.modelUsage !== undefined) breadcrumbData.modelUsage = data.modelUsage;
 
   addBreadcrumb({
     category: "agent.usage",
@@ -36,17 +38,4 @@ export const recordAgentUsage = (data: AgentUsageData): void => {
     level: "info",
     data: breadcrumbData,
   });
-
-  captureMessage(
-    "agent.usage",
-    "info",
-    {
-      ...breadcrumbData,
-      ...(data.modelUsage ? { modelUsage: data.modelUsage } : {}),
-    },
-    {
-      step: "agent.run",
-      source: data.source,
-    },
-  );
 };
