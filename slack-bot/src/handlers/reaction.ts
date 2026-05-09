@@ -1,26 +1,6 @@
 import type { App } from "@slack/bolt";
 import { SLACK_DIGEST_CHANNEL_ID, SAVE_REACTION_EMOJI } from "../config";
 import { askAgent } from "../agent-client";
-import { parseTweetFromBlocks } from "../lib/parse-tweet-blocks";
-import type { ParsedTweetForVault } from "../lib/parse-tweet-blocks";
-
-function buildObsidianSavePrompt(tweet: ParsedTweetForVault): string {
-  const lines = [
-    `以下のX投稿をObsidianのVaultに保存してください。`,
-    ``,
-    `URL: ${tweet.xUrl}`,
-    `著者: @${tweet.authorUsername}`,
-    ``,
-    `ツイート本文:`,
-    tweet.tweetText,
-  ];
-
-  if (tweet.summary) {
-    lines.push(``, `構造化要約:`, tweet.summary);
-  }
-
-  return lines.join("\n");
-}
 
 export function registerReactionHandler(app: App): void {
   if (!SLACK_DIGEST_CHANNEL_ID) {
@@ -41,10 +21,25 @@ export function registerReactionHandler(app: App): void {
         inclusive: true,
       });
 
-      const tweetData = parseTweetFromBlocks(result.messages?.[0]?.blocks as unknown[]);
-      if (!tweetData) return;
+      const message = result.messages?.[0];
+      if (!message) return;
 
-      await askAgent(buildObsidianSavePrompt(tweetData), "import-x-post");
+      const today = new Date().toISOString().slice(0, 10);
+      const prompt = [
+        `以下のSlackメッセージをMarkdown形式でObsidianのVaultに保存してください。`,
+        ``,
+        `# 保存先ルール`,
+        `- 保存先: VaultのX Postディレクトリ配下の適切なカテゴリフォルダ`,
+        `- カテゴリ一覧: AI / Web3 / Business / Career / CS`,
+        `- 内容から最も適切なカテゴリを1つ選択し、そのフォルダに保存する`,
+        `- フォルダが存在しない場合は作成する`,
+        `- ファイル名のフォーマット: ${today}-{title} (titleは内容を表す英単語またはローマ字)`,
+        ``,
+        `# Slackメッセージ`,
+        JSON.stringify(message, null, 2),
+      ].join("\n");
+
+      await askAgent(prompt, "import-x-post");
     } catch (err) {
       logger.error("reaction handler failed", err);
     }

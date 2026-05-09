@@ -348,8 +348,10 @@ description: >
 # X投稿の保存
 
 ## 保存先
-- X Post/YYYY-MM-DD-{title}.md
-- title: ツイート最初の1行（ASCII・スペースはハイフン・最大50文字・日本語不可）
+- X Post/{category}/YYYY-MM-DD-{title}.md
+- category: 内容から AI / Web3 / Business / Career / CS の中で最も適切なものを1つ選択
+- title: ツイート内容を表す英単語またはローマ字（スペースはハイフン・最大50文字・日本語不可）
+- YYYY-MM-DD: プロンプトに含まれる保存日を使用する
 
 ## フォーマット
 ---
@@ -373,7 +375,7 @@ tags: #xpost
 
 ## 操作ルール
 - Grep で source URL を確認し、一致するファイルがあれば重複作成しない
-- X Post/ ディレクトリが存在しない場合は作成する
+- X Post/{category}/ ディレクトリが存在しない場合は作成する
 - ファイル名は ASCII のみ（日本語・記号は除去またはハイフン置換）
 - タグは #xpost 固定（内容に応じて追加タグ付与可）
 ```
