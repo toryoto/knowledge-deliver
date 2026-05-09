@@ -14,7 +14,7 @@ export function registerReactionHandler(app: App): void {
       `reaction_added: emoji=${event.reaction}, channel=${event.item.channel}, type=${event.item.type}`
     );
 
-    if (event.reaction !== SAVE_REACTION_EMOJI) return;
+    if (!SAVE_REACTION_EMOJI.includes(event.reaction)) return;
     if (event.item.type !== "message") return;
     if (event.item.channel !== SLACK_DIGEST_CHANNEL_ID) {
       logger.info(

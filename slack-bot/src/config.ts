@@ -26,4 +26,7 @@ export const SLACK_APP_TOKEN = getRequiredEnv("SLACK_APP_TOKEN");
 export const AGENT_ENDPOINT_URL = normalizeAgentEndpointUrl(getRequiredEnv("AGENT_ENDPOINT_URL"));
 export const AGENT_REQUEST_TIMEOUT_MS = Number(process.env.AGENT_REQUEST_TIMEOUT_MS ?? 90_000);
 export const SLACK_DIGEST_CHANNEL_ID = process.env.SLACK_DIGEST_CHANNEL_ID ?? "";
-export const SAVE_REACTION_EMOJI = process.env.SAVE_REACTION_EMOJI ?? "bookmark";
+export const SAVE_REACTION_EMOJI: string[] = (process.env.SAVE_REACTION_EMOJI ?? "bookmark,しおり")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
