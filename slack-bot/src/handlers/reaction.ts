@@ -57,7 +57,7 @@ export function registerReactionHandler(app: App): void {
         JSON.stringify(message, null, 2),
       ].join("\n");
 
-      await askAgent(prompt, "import-x-post");
+      await askAgent(prompt, `import-x-post-${event.item.ts}`);
     } catch (err) {
       logger.error("reaction handler failed", err);
       captureError(err, {
