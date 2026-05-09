@@ -10,9 +10,6 @@ import { initVault } from "./vault";
 
 initObservability({ service: "agent-server" });
 
-// SENTRY SMOKE TEST — 確認後に削除すること
-captureError(new Error("Sentry smoke test"), { reason: "manual test" }, { step: "smoke-test" });
-
 await initVault();
 await connectSessionStore();
 
