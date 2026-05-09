@@ -24,6 +24,12 @@ process.on("unhandledRejection", (reason) => {
   captureError(reason, {}, { step: "process.unhandledRejection" });
 });
 
+// TODO: 動作確認後に削除
+app.use(async ({ payload, next, logger }) => {
+  logger.info(`[debug] event received: ${(payload as Record<string, unknown>).type ?? "unknown"}`);
+  await next();
+});
+
 registerMentionHandler(app);
 registerDmHandler(app);
 registerCommandHandlers(app);
