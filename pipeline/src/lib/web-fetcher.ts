@@ -1,4 +1,4 @@
-import { captureError } from "observability";
+import { recordExternalApiFailure } from "observability";
 import { SPIDER_API_KEY, SPIDER_SCRAPE_REQUEST } from "./config";
 import { formatPipelineError } from "./error-log";
 
@@ -36,10 +36,10 @@ async function fetchWithSpider(url: string): Promise<string | null> {
     if (!res.ok) {
       const snippet = await res.text().then((t) => t.slice(0, 400)).catch(() => "");
       console.warn(`[web-fetcher] Spider HTTP ${res.status} url=${url}`, snippet || "(no body)");
-      captureError(
+      recordExternalApiFailure(
         new Error(`Spider HTTP ${res.status}`),
-        { url, httpStatus: res.status, snippet: snippet || undefined },
-        { step: "web-fetcher.spider", provider: "spider" },
+        { provider: "spider", endpoint: "/scrape", httpStatus: res.status, snippet: snippet || undefined },
+        { fatal: true },
       );
       return null;
     }
@@ -48,10 +48,10 @@ async function fetchWithSpider(url: string): Promise<string | null> {
     const item = data?.[0];
     if (item?.error) {
       console.warn(`[web-fetcher] Spider API error url=${url}:`, item.error);
-      captureError(
+      recordExternalApiFailure(
         new Error(`Spider API error: ${item.error}`),
-        { url, spiderError: item.error },
-        { step: "web-fetcher.spider", provider: "spider" },
+        { provider: "spider", endpoint: "/scrape", snippet: item.error },
+        { fatal: true },
       );
       return null;
     }
@@ -61,7 +61,11 @@ async function fetchWithSpider(url: string): Promise<string | null> {
     const name = e instanceof Error ? e.name : "";
     const kind = name === "AbortError" ? "timeout or abort" : "request failed";
     console.warn(`[web-fetcher] Spider ${kind} url=${url}:`, formatPipelineError(e));
-    captureError(e, { url, kind }, { step: "web-fetcher.spider", provider: "spider" });
+    recordExternalApiFailure(
+      e,
+      { provider: "spider", endpoint: "/scrape", snippet: kind },
+      { fatal: true },
+    );
     return null;
   } finally {
     clearTimeout(timeoutId);
