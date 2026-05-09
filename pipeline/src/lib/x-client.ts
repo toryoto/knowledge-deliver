@@ -1,5 +1,5 @@
 import { TwitterApi, TweetV2UserLikedTweetsPaginator, type TweetV2 } from "twitter-api-v2";
-import { X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET, X_USER_ID, MAX_PAGES } from "./config";
+import { X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET, X_USER_ID, MAX_PAGES, MAX_COLLECT_TWEETS } from "./config";
 import { formatPipelineError } from "./error-log";
 import { getCursor } from "./like-cursor-store";
 
@@ -12,6 +12,9 @@ const client = new TwitterApi({
 
 /** liked_tweets は max_results の最小が 5。1 などは 400 Invalid Request になる */
 const LIKED_TWEETS_MIN_PAGE_SIZE = 5;
+
+/** カーソルが一覧に現れないとき（いいね解除など）に投稿・エンリッチする件数の上限 */
+const CURSOR_NOT_FOUND_MAX_TWEETS = 5;
 
 /**
  * liked_tweets でも GET /2/tweets/:id でも同じ set を渡す（一覧が note_tweet を省くケースの補完用）
@@ -178,16 +181,18 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
     max_results: isFirstRun ? LIKED_TWEETS_MIN_PAGE_SIZE : 100,
   });
 
-  const newTweets: XTweet[] = [];
+  /** ページを跨いだ author_id → user 展開（後段のエンリッチで使用） */
+  const userMapById = new Map<string, { username: string; name: string }>();
+  const candidateTweets: TweetV2[] = [];
   let processedCount = 0;
   let pageCount = 1;
   let cursorReached = false;
 
   while (true) {
     const allTweets = paginator.tweets;
-    const userMap = new Map(
-      (paginator.includes?.users ?? []).map((u) => [u.id, { username: u.username, name: u.name }])
-    );
+    for (const u of paginator.includes?.users ?? []) {
+      userMapById.set(u.id, { username: u.username, name: u.name });
+    }
 
     for (let i = processedCount; i < allTweets.length; i++) {
       const tweet = allTweets[i] as TweetV2;
@@ -197,30 +202,7 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
         break;
       }
 
-      const user = userMap.get(tweet.author_id ?? "") ?? { username: "unknown", name: "Unknown" };
-      const enriched = await fetchEnrichedTweetIfNeeded(tweet);
-
-      const rawUrls = extractAllUrls(tweet, enriched);
-      const externalUrls = rawUrls.filter(
-        (u) =>
-          !u.includes("x.com/") &&
-          !u.includes("twitter.com/") &&
-          !u.includes("pic.twitter.com")
-      );
-      const noteTweetText = extractNoteTweetTextFromPayload(enriched);
-      const { title: articleTitle, plainText: articlePlainText } = extractArticleFromPayload(enriched);
-
-      newTweets.push({
-        id: tweet.id,
-        text: tweet.text,
-        noteTweetText,
-        articleTitle: articleTitle ?? null,
-        articlePlainText: articlePlainText ?? null,
-        authorUsername: user.username,
-        authorName: user.name,
-        url: `https://x.com/${user.username}/status/${tweet.id}`,
-        urls: externalUrls,
-      });
+      candidateTweets.push(tweet);
     }
 
     processedCount = allTweets.length;
@@ -242,11 +224,58 @@ export async function fetchNewLikes(): Promise<XTweet[]> {
     !cursorReached &&
     !isFirstRun &&
     pageCount >= MAX_PAGES &&
-    newTweets.length > 0
+    candidateTweets.length > 0
   ) {
     console.warn(
       `[x-client] MAX_PAGES (${MAX_PAGES}) reached without finding cursor ${cursor}. Some likes may be missed.`
     );
+  }
+
+  let tweetsToEnrich: TweetV2[];
+  if (isFirstRun) {
+    tweetsToEnrich = candidateTweets;
+  } else if (cursorReached) {
+    if (candidateTweets.length > MAX_COLLECT_TWEETS) {
+      console.warn(
+        `[x-client] MAX_COLLECT_TWEETS (${MAX_COLLECT_TWEETS}) reached (cursor found). Truncating older likes.`
+      );
+    }
+    tweetsToEnrich = candidateTweets.slice(0, MAX_COLLECT_TWEETS);
+  } else {
+    if (candidateTweets.length > CURSOR_NOT_FOUND_MAX_TWEETS) {
+      console.warn(
+        `[x-client] cursor ${cursor} not found in liked posts; processing top ${CURSOR_NOT_FOUND_MAX_TWEETS} only (e.g. unliked edge).`
+      );
+    }
+    tweetsToEnrich = candidateTweets.slice(0, CURSOR_NOT_FOUND_MAX_TWEETS);
+  }
+
+  const newTweets: XTweet[] = [];
+  for (const tweet of tweetsToEnrich) {
+    const user = userMapById.get(tweet.author_id ?? "") ?? { username: "unknown", name: "Unknown" };
+    const enriched = await fetchEnrichedTweetIfNeeded(tweet);
+
+    const rawUrls = extractAllUrls(tweet, enriched);
+    const externalUrls = rawUrls.filter(
+      (u) =>
+        !u.includes("x.com/") &&
+        !u.includes("twitter.com/") &&
+        !u.includes("pic.twitter.com")
+    );
+    const noteTweetText = extractNoteTweetTextFromPayload(enriched);
+    const { title: articleTitle, plainText: articlePlainText } = extractArticleFromPayload(enriched);
+
+    newTweets.push({
+      id: tweet.id,
+      text: tweet.text,
+      noteTweetText,
+      articleTitle: articleTitle ?? null,
+      articlePlainText: articlePlainText ?? null,
+      authorUsername: user.username,
+      authorName: user.name,
+      url: `https://x.com/${user.username}/status/${tweet.id}`,
+      urls: externalUrls,
+    });
   }
 
   return newTweets;

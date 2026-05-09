@@ -36,4 +36,14 @@ export const AGENT_ENDPOINT_URL = normalizeUrl(
 export const AGENT_REQUEST_TIMEOUT_MS = Number(
   process.env.AGENT_REQUEST_TIMEOUT_MS ?? 180_000
 );
-export const MAX_PAGES = Number(process.env.MAX_PAGES ?? 10);
+const DEFAULT_MAX_PAGES = 10;
+const parsedMaxPages = Number(process.env.MAX_PAGES ?? DEFAULT_MAX_PAGES);
+export const MAX_PAGES = Number.isFinite(parsedMaxPages) && parsedMaxPages > 0
+  ? parsedMaxPages
+  : DEFAULT_MAX_PAGES;
+
+const DEFAULT_MAX_COLLECT_TWEETS = 20;
+const parsedMaxCollect = Number(process.env.MAX_COLLECT_TWEETS ?? DEFAULT_MAX_COLLECT_TWEETS);
+export const MAX_COLLECT_TWEETS = Number.isFinite(parsedMaxCollect) && parsedMaxCollect > 0
+  ? parsedMaxCollect
+  : DEFAULT_MAX_COLLECT_TWEETS;
