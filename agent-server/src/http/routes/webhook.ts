@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { isValidHubSignature256 } from "../../../lib/github-webhook-signature";
 import { GITHUB_WEBHOOK_SECRET } from "../../../lib/config";
 import { logger } from "../../../lib/logger";
+import { captureError } from "observability";
 import { pullVault } from "../../vault";
 
 const VAULT_SYNC_REFS: readonly string[] = [
@@ -34,7 +35,10 @@ webhookRoute.post("/", async (c) => {
   if (payload.ref && VAULT_SYNC_REFS.includes(payload.ref)) {
     logger.info("webhook: main push, scheduling pull", { ref: payload.ref });
     setImmediate(() => {
-      pullVault().catch((err) => logger.error("vault: pull failed (webhook)", err));
+      pullVault().catch((err) => {
+        logger.error("vault: pull failed (webhook)", err);
+        captureError(err, { ref: payload.ref }, { step: "vault.pull.webhook" });
+      });
     });
   } else {
     logger.debug("webhook: ignored (non-default branch)", { ref: String(payload.ref) });
