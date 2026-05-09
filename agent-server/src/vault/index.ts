@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { GITHUB_TOKEN, GIT_USER_EMAIL, GIT_USER_NAME, VAULT_PATH, VAULT_REPO_URL } from "../../lib/config";
 import { logger } from "../../lib/logger";
+import { captureError } from "observability";
 
 let isSyncing = false;
 
@@ -36,10 +37,12 @@ export async function pullVault(): Promise<void> {
   isSyncing = true;
   try {
     const git = simpleGit(VAULT_PATH);
-    await git.pull();
+    const branch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
+    await git.pull("origin", branch);
     logger.info("vault: pull done", { path: VAULT_PATH });
   } catch (err) {
     logger.error("vault: pull failed", err);
+    captureError(err, { path: VAULT_PATH }, { step: "vault.pull" });
     throw err;
   } finally {
     isSyncing = false;
@@ -70,8 +73,7 @@ export async function commitAndPush(message: string): Promise<void> {
     const remote = await git.getRemotes(true);
     if (remote.length > 0) {
       const remoteUrl = remote[0].refs.push;
-      await git.removeRemote("origin");
-      await git.addRemote("origin", authedUrl(remoteUrl));
+      await git.remote(["set-url", "origin", authedUrl(remoteUrl)]);
       try {
         await git.push("origin", "HEAD");
         logger.info("vault: push done", { path: VAULT_PATH });
